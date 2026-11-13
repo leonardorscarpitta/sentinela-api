@@ -133,56 +133,8 @@
 
 <body id="keycloak-bg" class="${properties.kcBodyClass!} sentinela" data-page-id="login-${pageId}">
 <#assign appUrl = (client.baseUrl)!"">
-<div class="art-layout">
-  <aside class="art-info">
-    <#if appUrl?has_content><a class="art-home" href="${appUrl}"><span class="art-logo">
-        <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true">
-          <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2" />
-          <path d="M20 5a12 12 0 1 0 0 22a10 10 0 0 1 0-22z" fill="currentColor" />
-        </svg>
-        <span class="art-logo-name">Sentinela Cidadã</span>
-      </span></a><#else><span class="art-logo">
-        <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true">
-          <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2" />
-          <path d="M20 5a12 12 0 1 0 0 22a10 10 0 0 1 0-22z" fill="currentColor" />
-        </svg>
-        <span class="art-logo-name">Sentinela Cidadã</span>
-      </span></#if>
-    <div class="art-pitch">
-      <p class="art-eyebrow">${msg("sentinelaProduct")}</p>
-      <h2>${msg("sentinelaHeading")}</h2>
-      <p class="art-lead">${msg("sentinelaLead")}</p>
-      <ul class="art-caps">
-          <li>
-            <span class="art-cap-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M8 6 2 12l6 6 1.4-1.4L4.8 12l4.6-4.6zm8 0-1.4 1.4 4.6 4.6-4.6 4.6L16 18l6-6z" /></svg></span>
-            <div><strong>${msg("sentinelaCap1Title")}</strong><p>${msg("sentinelaCap1Desc")}</p></div>
-          </li>
-          <li>
-            <span class="art-cap-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2 3 6v6c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V6zm-1.2 14.2-3.5-3.5 1.4-1.4 2.1 2.1 4.9-4.9 1.4 1.4z" /></svg></span>
-            <div><strong>${msg("sentinelaCap2Title")}</strong><p>${msg("sentinelaCap2Desc")}</p></div>
-          </li>
-          <li>
-            <span class="art-cap-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M13 2 4 14h6l-1 8 9-12h-6z" /></svg></span>
-            <div><strong>${msg("sentinelaCap3Title")}</strong><p>${msg("sentinelaCap3Desc")}</p></div>
-          </li>
-      </ul>
-    </div>
-    <dl class="art-facts">
-      <div><dt>${msg("sentinelaStatStacks")}</dt><dd>React · Angular · Spring · Python</dd></div>
-      <div><dt>${msg("sentinelaStatSource")}</dt><dd>NIST NVD</dd></div>
-      <div><dt>${msg("sentinelaStatAuth")}</dt><dd>OpenID Connect</dd></div>
-    </dl>
-  </aside>
-
-  <div class="art-side">
-    <header class="art-bar">
-      <span class="art-bar-logo"><span class="art-logo">
-        <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true">
-          <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2" />
-          <path d="M20 5a12 12 0 1 0 0 22a10 10 0 0 1 0-22z" fill="currentColor" />
-        </svg>
-        <span class="art-logo-name">Sentinela Cidadã</span>
-      </span></span>
+<div class="snt-page">
+    <header class="snt-top">
       <#if realm.internationalizationEnabled  && locale.supported?size gt 1>
         <div class="${properties.kcLoginMainHeaderUtilities!}">
           <div class="${properties.kcInputClass!}">
@@ -223,8 +175,16 @@
         </#if>
     </header>
 
-    <div class="art-center">
-    <main class="${properties.kcLoginMain!} art-card">
+    <div class="snt-col">
+    <div class="snt-brand">
+      <#if appUrl?has_content><a class="snt-name" href="${appUrl}"><#else><span class="snt-name"></#if>
+        <img src="${url.resourcesPath}/img/favicon.svg" alt="" width="40" height="40" />
+        <span>Sentinela <strong>Cidadã</strong></span>
+      <#if appUrl?has_content></a><#else></span></#if>
+      <p class="snt-tagline">${msg("sentinelaTagline")}</p>
+    </div>
+
+    <main class="${properties.kcLoginMain!} snt-card">
       <div class="${properties.kcLoginMainHeader!}">
         <h1 class="${properties.kcLoginMainTitle!}" id="kc-page-title"><#nested "header"></h1>
         
@@ -304,19 +264,14 @@
             <@loginFooter.content/>
         </div>
     </main>
-    </div>
 
-    <footer class="art-foot">
-      <span>© 2026 Sentinela Cidadã</span>
+    <footer class="snt-foot">
       <#if appUrl?has_content>
-      <span class="art-links">
         <a href="${appUrl}">${msg("sentinelaBackToApp")}</a>
-        <a href="${appUrl}/privacy">${msg("sentinelaPrivacy")}</a>
-        <a href="${appUrl}/terms">${msg("sentinelaTerms")}</a>
-      </span>
       </#if>
+      <span>© 2026 Sentinela Cidadã</span>
     </footer>
-  </div>
+    </div>
 </div>
 </body>
 </html>
