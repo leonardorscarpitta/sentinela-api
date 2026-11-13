@@ -27,10 +27,9 @@ The implementation follows the original contract; these points refine or deviate
 
 ---
 
-Product name everywhere users see it: **Sentinela Cidadã**. The backend is a fork of the Artemis SAST platform
-(`sentinela-api`); technical identifiers (`io.github.artemiscore.artemisappsec`, `artemisappsec.*`, Keycloak realm/client
-ids, `X-Artemis-Organization`) stay unchanged. Everything below is **new** on top of the existing API documented in
-`README.md`.
+Product name everywhere users see it: **Sentinela Cidadã**; technical identifiers use `sentinela`
+(`br.com.sentinelacidada`, `sentinela.*`, Keycloak realm/client ids, `X-Sentinela-Organization`). Everything below is
+the PII module, on top of the rest of the API documented in `README.md`.
 
 Wire style follows the existing API: JSON camelCase, enum values lowercase/camelCase strings, errors as RFC 7807
 ProblemDetail with `code`.
@@ -138,8 +137,8 @@ instruction is recorded in `prompts.md`.
 
 ## 5. Unchanged API the frontend also uses
 
-Auth (Keycloak OIDC Authorization Code + PKCE, client `artemisappsec-web`, or `AUTH_ENABLED=false` in dev), `GET /me`,
-`GET /me/organizations`, header `X-Artemis-Organization: <slug>`, repositories (`GET/POST /repositories`,
+Auth (Keycloak OIDC Authorization Code + PKCE, client `sentinela-web`, or `AUTH_ENABLED=false` in dev), `GET /me`,
+`GET /me/organizations`, header `X-Sentinela-Organization: <slug>`, repositories (`GET/POST /repositories`,
 `/repositories/{name}/access`, `/access/key`, `/access/checks`, `/scans`), `GET /pipeline-runs`,
 `GET /pipeline-runs/{number}`, `GET /findings`, `GET /findings/{id}`, `POST /findings/{id}/status`,
 `GET /dashboard/summary` (`byKind` now includes `privacy`), `GET /usage`. Read the controllers for exact shapes.

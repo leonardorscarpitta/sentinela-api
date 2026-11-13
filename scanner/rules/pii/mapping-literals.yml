@@ -12,7 +12,7 @@ rules:
     metadata:
       title: CPF escrito no repositório
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: medium
+      sentinela-severity: medium
       sentinela: { category: identification, type: mapping, validator: cpf }
     pattern-regex: (?<![\w.-])\d{3}\.\d{3}\.\d{3}-\d{2}(?![\w-])
 
@@ -25,7 +25,7 @@ rules:
     metadata:
       title: Cartão SUS (CNS) escrito no repositório
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: medium
+      sentinela-severity: medium
       sentinela: { category: health, type: mapping, validator: cns }
     pattern-either:
       - pattern-regex: (?<![\w.-])[1-2789]\d{2} \d{4} \d{4} \d{4}(?![\w-])
@@ -41,7 +41,7 @@ rules:
     metadata:
       title: Número de cartão escrito no repositório
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: medium
+      sentinela-severity: medium
       sentinela: { category: financial, type: mapping, validator: luhn }
     pattern-regex: (?<![\w.-])(?:4\d{3}|5[1-5]\d{2}|2[2-7]\d{2}|6011)(?:[ -]?\d{4}){3}(?![\w-])
 
@@ -54,7 +54,7 @@ rules:
     metadata:
       title: Código CID-10 escrito no repositório
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: medium
+      sentinela-severity: medium
       sentinela: { category: health, type: mapping }
     pattern-regex: (?i)\bcid(?:[-_ ]?10)?\b["']?\s*[:=]\s*["']?[A-TV-Z]\d{2}(?:\.\d{1,2})?\b
 
@@ -67,7 +67,7 @@ rules:
     metadata:
       title: E-mail escrito no repositório
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: low
+      sentinela-severity: low
       sentinela: { category: contact, type: mapping }
     paths:
       exclude: ["pom.xml", "package.json", "*.lock", "*-lock.json", "*.md", "LICENSE*", "NOTICE*", "AUTHORS*", "CODEOWNERS", "*.svg", "*.min.js"]
@@ -80,7 +80,7 @@ rules:
     metadata:
       title: Celular escrito no repositório
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: low
+      sentinela-severity: low
       sentinela: { category: contact, type: mapping }
     pattern-regex: (?<![\w+])(?:\+55\s?)?\(\d{2}\)\s?9\d{4}-\d{4}(?!\d)
 
@@ -93,7 +93,7 @@ rules:
     metadata:
       title: Senha em arquivo de configuração
       cwe: "CWE-260: Password in Configuration File"
-      artemis-severity: high
+      sentinela-severity: high
       sentinela: { category: credential, type: mapping }
     paths:
       include: ["*.properties", "*.yml", "*.yaml", "*.env", ".env", ".env.*", "*.ini", "*.cfg", "*.conf", "*.toml"]

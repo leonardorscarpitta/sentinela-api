@@ -5,10 +5,10 @@ modo local sobre o protótipo CitizenTech fictício `scanner/test-fixtures/citiz
 cadastro de cidadãos, zeladoria e triagem de saúde em Spring Boot). Todos os dados do protótipo são fictícios.
 
 ```sh
-docker build -t artemisappsec/runner:dev scanner
+docker build -t sentinela/runner:dev scanner
 docker run --rm --read-only --cap-drop ALL --tmpfs /tmp --tmpfs /workspace:uid=10001,gid=10001 \
   -v "$PWD/scanner/test-fixtures/citizentech-app:/fixture:ro" \
-  artemisappsec/runner:dev scan --dir /fixture --stages pii
+  sentinela/runner:dev scan --dir /fixture --stages pii
 ```
 
 Resultado: **20 achados** — 5 fluxos (taint) com rastro completo, 15 mapeamentos — e **1 literal descartado** pela

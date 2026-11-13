@@ -1,0 +1,16 @@
+package br.com.sentinelacidada.organization.persistence;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import br.com.sentinelacidada.organization.domain.ApiToken;
+
+public interface ApiTokenRepository extends JpaRepository<ApiToken, UUID> {
+
+	List<ApiToken> findByOrganizationIdOrderByCreatedAtAsc(UUID organizationId);
+
+	Optional<ApiToken> findByIdAndOrganizationId(UUID id, UUID organizationId);
+}

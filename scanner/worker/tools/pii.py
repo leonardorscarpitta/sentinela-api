@@ -16,9 +16,9 @@ from pathlib import Path
 from .base import ToolError, ToolResult, finding, location, read_json, relative, run, severity, summary
 from ..sanitize import clip
 
-RULES_DIR = Path(os.environ.get("ARTEMIS_RULES_DIR", "/opt/artemis/rules")) / "pii"
+RULES_DIR = Path(os.environ.get("SENTINELA_RULES_DIR", "/opt/sentinela/rules")) / "pii"
 # The flow rules with YAML anchors expanded (built into the image): semgrep-core does not resolve anchors.
-CORE_RULES_DIR = Path(os.environ.get("ARTEMIS_CORE_RULES_DIR", "/opt/artemis/rules-core"))
+CORE_RULES_DIR = Path(os.environ.get("SENTINELA_CORE_RULES_DIR", "/opt/sentinela/rules-core"))
 CATEGORIES = {"identification", "health", "credential", "contact", "financial"}
 SINKS = {"log", "httpResponse", "externalApi", "file", "exception"}
 # Files whose flow traces are recovered (one engine run each) and steps kept per trace.
@@ -70,7 +70,7 @@ def scan(src: Path, out: Path, timeout: int) -> ToolResult:
         line = result.get("start", {}).get("line")
         item = finding(
             "privacy", rule, metadata.get("title") or rule, result.get("extra", {}).get("message", ""),
-            severity(metadata.get("artemis-severity"), "medium"),
+            severity(metadata.get("sentinela-severity"), "medium"),
             cwe=_cwe(metadata.get("cwe")),
             location=location(path, line),
             privacy={"category": category, "type": kind, "sink": sink if kind == "flow" else None, "trace": []},

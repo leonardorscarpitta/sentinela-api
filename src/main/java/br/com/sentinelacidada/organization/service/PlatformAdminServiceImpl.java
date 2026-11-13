@@ -1,0 +1,106 @@
+package br.com.sentinelacidada.organization.service;
+
+import java.util.Comparator;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import br.com.sentinelacidada.organization.domain.Feature;
+import br.com.sentinelacidada.organization.domain.Member;
+import br.com.sentinelacidada.organization.domain.Organization;
+import br.com.sentinelacidada.organization.domain.Role;
+import br.com.sentinelacidada.organization.persistence.MemberRepository;
+import br.com.sentinelacidada.organization.persistence.OrganizationFeatureStore;
+import br.com.sentinelacidada.organization.persistence.OrganizationRepository;
+
+@Service
+@Transactional(readOnly = true)
+class PlatformAdminServiceImpl implements PlatformAdminService, OrganizationFeatures {
+
+	private static final Logger log = LoggerFactory.getLogger(PlatformAdminServiceImpl.class);
+
+	private final OrganizationRepository organizations;
+	private final MemberRepository members;
+	private final OrganizationFeatureStore features;
+	private final RepositoryCounts repositories;
+
+	PlatformAdminServiceImpl(OrganizationRepository organizations, MemberRepository members, OrganizationFeatureStore features,
+			RepositoryCounts repositories) {
+		this.organizations = organizations;
+		this.members = members;
+		this.features = features;
+		this.repositories = repositories;
+	}
+
+	@Override
+	public List<AdminOrganizationView> organizations() {
+		List<Organization> all = organizations.findAll();
+		Map<UUID, List<Member>> membersByOrg = members.findAll().stream()
+			.filter(Member::isActive)
+			.collect(Collectors.groupingBy(Member::getOrganizationId));
+		Map<UUID, Set<Feature>> enabled = features.featuresOf(all.stream().map(Organization::getId).toList());
+		Map<UUID, Long> repositoryCounts = repositories.repositoriesByOrganization();
+		return all.stream()
+			.map(o -> toView(o, membersByOrg.getOrDefault(o.getId(), List.of()), enabled.getOrDefault(o.getId(), Set.of()),
+					repositoryCounts.getOrDefault(o.getId(), 0L)))
+			.sorted(Comparator.comparing(AdminOrganizationView::name, String.CASE_INSENSITIVE_ORDER))
+			.toList();
+	}
+
+	@Override
+	public AdminOrganizationView organization(String slug) {
+		return toView(find(slug));
+	}
+
+	@Override
+	@Transactional
+	public void deleteOrganization(String slug, String admin) {
+		Organization organization = find(slug);
+		// Same as the owner's deletion: every table references the organization with ON DELETE CASCADE.
+		organizations.delete(organization);
+		log.info("Sentinela administrator {} deleted organization {}", admin, organization.getSlug());
+	}
+
+	@Override
+	@Transactional
+	public AdminOrganizationView updateFeatures(String slug, Set<Feature> requested, String admin) {
+		Organization organization = find(slug);
+		features.replace(organization.getId(), requested.isEmpty() ? EnumSet.noneOf(Feature.class) : EnumSet.copyOf(requested), admin);
+		return toView(organization);
+	}
+
+	private Organization find(String slug) {
+		return organizations.findBySlug(slug).orElseThrow(MembershipServiceImpl::organizationNotFound);
+	}
+
+	private AdminOrganizationView toView(Organization organization) {
+		return toView(organization, members.findByOrganizationIdOrderByCreatedAtAsc(organization.getId()).stream()
+			.filter(Member::isActive).toList(), enabledFor(organization.getId()),
+				repositories.repositoriesByOrganization().getOrDefault(organization.getId(), 0L));
+	}
+
+	@Override
+	public boolean isEnabled(UUID organizationId, Feature feature) {
+		return features.isEnabled(organizationId, feature);
+	}
+
+	@Override
+	public Set<Feature> enabledFor(UUID organizationId) {
+		return features.featuresOf(List.of(organizationId)).getOrDefault(organizationId, Set.of());
+	}
+
+	private static AdminOrganizationView toView(Organization organization, List<Member> active, Set<Feature> enabled,
+			long repositoryCount) {
+		String owner = active.stream().filter(m -> m.getRole() == Role.OWNER).map(Member::getName).findFirst().orElse(null);
+		return new AdminOrganizationView(organization.getSlug(), organization.getName(), organization.getCreatedAt(), owner,
+				active.size(), repositoryCount, enabled.stream().sorted().toList());
+	}
+}

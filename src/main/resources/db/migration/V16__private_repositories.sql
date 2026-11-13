@@ -1,4 +1,4 @@
--- Private repositories over SSH: Artemis-generated deploy keys (private part encrypted with AES-256-GCM by the API),
+-- Private repositories over SSH: Sentinela-generated deploy keys (private part encrypted with AES-256-GCM by the API),
 -- access checks run by the scanner, and the host key recorded on first contact for non-pinned Git servers.
 ALTER TABLE deploy_key
     ADD COLUMN managed                BOOLEAN NOT NULL DEFAULT FALSE,

@@ -1,10 +1,10 @@
-"""SAST with the Semgrep CE engine and Artemis's own rules (never the Semgrep registry)."""
+"""SAST with the Semgrep CE engine and Sentinela's own rules (never the Semgrep registry)."""
 import os
 from pathlib import Path
 
 from .base import ToolError, ToolResult, finding, location, read_json, relative, run, severity, summary
 
-RULES_DIR = os.environ.get("ARTEMIS_RULES_DIR", "/opt/artemis/rules")
+RULES_DIR = os.environ.get("SENTINELA_RULES_DIR", "/opt/sentinela/rules")
 
 
 def scan(src: Path, out: Path, timeout: int) -> ToolResult:
@@ -34,7 +34,7 @@ def scan(src: Path, out: Path, timeout: int) -> ToolResult:
         findings.append(finding(
             "code", rule, metadata.get("title") or extra.get("message", rule).split(".")[0],
             extra.get("message", ""),
-            severity(metadata.get("artemis-severity") or extra.get("severity"), "medium"),
+            severity(metadata.get("sentinela-severity") or extra.get("severity"), "medium"),
             cwe=cwe,
             location=location(relative(result.get("path"), src), result.get("start", {}).get("line")),
         ))

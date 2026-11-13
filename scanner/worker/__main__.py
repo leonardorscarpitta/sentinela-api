@@ -17,7 +17,7 @@ from .job import process, process_access_check, wipe, wipe_workspace
 from .proc import harden, reap_orphans
 from .scan import run_stage
 
-log = logging.getLogger("artemis.runner")
+log = logging.getLogger("sentinela.runner")
 STAGE_ORDER = ["secrets", "sast", "pii", "sca", "license", "dockerfile", "image", "sbom", "iac", "dast"]
 DEFAULT_TOOLS = {"secrets": "Gitleaks", "sast": "Semgrep", "pii": "Semgrep", "sca": "Trivy", "license": "Trivy", "dockerfile": "Hadolint",
                  "image": "Trivy", "sbom": "Syft", "iac": "Trivy", "dast": "OWASP ZAP"}
@@ -28,7 +28,7 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(prog="worker")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("run", help="pull and process jobs from the Artemis API")
+    sub.add_parser("run", help="pull and process jobs from the Sentinela API")
     sub.add_parser("healthcheck")
     scan = sub.add_parser("scan", help="scan locally and print normalized results (no API)")
     source = scan.add_mutually_exclusive_group(required=True)
@@ -118,7 +118,7 @@ def local_scan(args) -> int:
         tools[stage] = tool
     stages = [s for s in args.stages.split(",") if s]
     workspace = Config.from_env(require_api=False).workspace
-    work = Path(tempfile.mkdtemp(prefix="artemis-local-", dir=workspace if workspace.is_dir() else None))
+    work = Path(tempfile.mkdtemp(prefix="sentinela-local-", dir=workspace if workspace.is_dir() else None))
     output = {"source": None, "stages": []}
     try:
         if args.url:

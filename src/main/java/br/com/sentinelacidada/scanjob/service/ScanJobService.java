@@ -1,0 +1,36 @@
+package br.com.sentinelacidada.scanjob.service;
+
+import java.util.Optional;
+import java.util.UUID;
+
+import br.com.sentinelacidada.project.service.StackDetection;
+import br.com.sentinelacidada.pipelinerun.domain.StageStatus;
+import br.com.sentinelacidada.shared.domain.Stage;
+
+/** Coordinates the scanner runner: hands out queued runs and records what it reports. */
+public interface ScanJobService {
+
+	/** Largest SBOM (raw CycloneDX JSON) the runner may upload. */
+	int MAX_SBOM_BYTES = 20 * 1024 * 1024;
+
+	/** The next access check, else the next queued run; empty when there is nothing to do. */
+	Optional<Assignment> claim();
+
+	/** Records an access check result; {@code hostKey} is the server's known_hosts line(s) seen by the runner. */
+	void completeAccessCheck(UUID checkId, boolean ok, String message, String hostKey, StackDetection detection);
+
+	void recordSource(UUID runId, String commitSha, String commitMessage);
+
+	/** Records a stage result and, when the stage completed, its findings; returns the final stage status. */
+	StageStatus recordStage(UUID runId, Stage stage, StageReport report);
+
+	/**
+	 * Stores the CycloneDX JSON SBOM of one scanned folder ({@code ""} = whole repository) while the run's SBOM stage
+	 * is pending; returns the number of components.
+	 */
+	int recordSbom(UUID runId, String folder, byte[] json);
+
+	void complete(UUID runId);
+
+	void fail(UUID runId, String reason, boolean accessLost);
+}

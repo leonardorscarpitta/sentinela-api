@@ -1,0 +1,34 @@
+package br.com.sentinelacidada.finding.service;
+
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.List;
+import java.util.UUID;
+
+import br.com.sentinelacidada.shared.domain.Stage;
+
+/** Public contract of the finding service (vulnerabilities, secrets, code, configuration and license issues). */
+public interface FindingService {
+
+	List<FindingSummary> search(UUID organizationId, FindingQuery query);
+
+	FindingDetails get(UUID organizationId, UUID id);
+
+	/** Accepting requires a justification and an expiry date and records a risk acceptance. */
+	FindingDetails changeStatus(UUID organizationId, UUID id, ChangeStatusCommand command, String actor);
+
+	/** Applies one status change to several findings at once, skipping those that cannot take it. */
+	BulkStatusResult changeStatuses(UUID organizationId, BulkStatusCommand command, String actor);
+
+	/** Findings of the organization that still need attention (open or triaged), leaving out removed repositories. */
+	List<FindingSummary> findActive(UUID organizationId);
+
+	/** Day-by-day history from {@code from} to {@code to} (inclusive), with days in {@code zone}. */
+	FindingTrend trend(UUID organizationId, LocalDate from, LocalDate to, ZoneId zone);
+
+	/**
+	 * Records everything a completed scanner stage reported for a project: new issues are opened, known ones refreshed
+	 * (and reopened if they had been fixed), and active issues of that stage that were not reported again are fixed.
+	 */
+	IngestionResult recordDetections(UUID projectId, Stage stage, String tool, List<DetectedIssue> issues);
+}

@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center">Proteção de dados pessoais em apps cidadãos (CitizenTech) — API</p>
+<p align="center">Personal-data protection for citizen-facing apps (CitizenTech) — API</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Java-25-0b4f8a" alt="Java 25">
@@ -16,9 +16,9 @@
 
 ---
 
-Backend of **Sentinela Cidadã**, a CitizenTech security platform that finds where citizens' personal data lives in an app's code (CPF, health data, passwords…), traces it to insecure outputs (logs, HTTP responses, third-party APIs, files, error messages), blocks those leaks in the pipeline and translates the risk for citizens. It is built on **Artemis**, an open-source SAST platform (fork), and keeps all of its scanning features. The frontend lives in the `sentinela-web` repository. The PII module is described in [PII module](#pii-module-sentinela-cidadã) and its API contract in [docs/pii-module.md](docs/pii-module.md).
+Backend of **Sentinela Cidadã**, a CitizenTech security platform that finds where citizens' personal data lives in an app's code (CPF, health data, passwords…), traces it to insecure outputs (logs, HTTP responses, third-party APIs, files, error messages), blocks those leaks in the pipeline and translates the risk for citizens. Around that it runs a full self-hosted security pipeline (secrets, SAST, dependencies, licenses, Dockerfile, image, SBOM, IaC). The frontend lives in the [sentinela-web](https://github.com/leonardorscarpitta/sentinela-web) repository. The PII module is described in [PII module](#pii-module-sentinela-cidadã) and its API contract in [docs/pii-module.md](docs/pii-module.md).
 
-**Naming:** users see the product as **Sentinela Cidadã**; technical identifiers keep Artemis's **artemisappsec** names so nothing breaks — Java package `io.github.artemiscore.artemisappsec`, Maven artifact, `spring.application.name`, configuration prefix `artemisappsec.*`, database name/user, OIDC client `artemisappsec-web`, audience `artemisappsec-api`, the `X-Artemis-Organization` header and the local auth host `auth.artemisappsec.localhost`. Sections below that describe inherited behaviour still say "Artemis".
+**Naming:** users see the product as **Sentinela Cidadã**; technical identifiers use **sentinela** — Java package `br.com.sentinelacidada`, Maven artifact, `spring.application.name`, configuration prefix `sentinela.*`, database name/user, OIDC client `sentinela-web`, audience `sentinela-api`, the `X-Sentinela-Organization` header and the local auth host `auth.sentinela.localhost`.
 
 ## PII module (Sentinela Cidadã)
 
@@ -62,45 +62,36 @@ Built for the GS 2026.2 CitizenTech brief: (01) personal-data mapping, (02) tain
 
 ## Architecture
 
-Artemis is fully containerized. Production runs on a Kubernetes cluster (k3s) synced by Argo CD; locally, the same services run with Docker Compose. Nothing is exposed directly to the internet: public traffic enters through a Cloudflare Tunnel.
+Everything runs in containers with Docker Compose.
 
 ```mermaid
 flowchart LR
-  user([Browser]) -->|HTTPS| edge["Cloudflare edge<br/>DNS · TLS"]
-  edge -->|Cloudflare Tunnel<br/>outbound-only connection| cfd["cloudflared<br/>(2 replicas)"]
-
-  subgraph k8s["Kubernetes cluster (k3s) · managed by Argo CD"]
-    cfd --> gw["Istio Gateway<br/>(Gateway API HTTPRoutes)"]
-    gw -->|"artemisappsec… /"| fe["frontend<br/>nginx + Angular"]
-    gw -->|"artemisappsec… /api"| api["api<br/>Spring Boot 4 · Java 25"]
-    gw -->|"auth.artemisappsec… /"| kc["keycloak<br/>OIDC identity provider"]
-    api -->|JWKS, admin API| kc
-    api --> db[("PostgreSQL 18<br/>app + keycloak databases")]
-    kc --> db
-    scanner["scanner runner<br/>Gitleaks · Semgrep · Trivy · Grype · Syft · Hadolint"] -->|"internal job API<br/>(Bearer token)"| api
-  end
-
+  user([Browser]) --> web["sentinela-web<br/>Angular dev server :4200"]
+  user -->|HTTPS :9443| authp["auth-proxy<br/>Caddy TLS"] --> kc["keycloak<br/>OIDC identity provider"]
+  web -->|"/api (network sentinela-web-gateway)"| gw["api-gateway<br/>Caddy"]
+  gw --> api["api<br/>Spring Boot 4 · Java 25"]
+  api -->|JWKS, admin API| kc
+  api --> db[("PostgreSQL 18<br/>app + keycloak databases")]
+  kc --> db
+  scanner["scanner runner<br/>Gitleaks · Semgrep · Trivy · Grype · Syft · Hadolint"] -->|"internal job API<br/>(Bearer token)"| gw
   scanner -->|"git clone over SSH<br/>(per-repository deploy key)"| git[("GitHub · GitLab · Bitbucket")]
-  scanner -->|vulnerability database updates| vdb[("Trivy / Grype DBs<br/>(NVD, GHSA, distro trackers)")]
   api -.->|"optional AI texts<br/>(de-identified)"| ai[("Claude API")]
 ```
 
-| Layer | Component | Role |
-| --- | --- | --- |
-| Edge | **Cloudflare** | DNS, TLS certificates and DDoS protection for `artemisappsec.papopromines.com.br` and `auth.artemisappsec.papopromines.com.br`. |
-| Ingress | **Cloudflare Tunnel** (`cloudflared`, 2 replicas) | Opens an outbound-only connection from the cluster to Cloudflare, so the cluster has no open inbound ports and no public IP. |
-| Reverse proxy | **Istio Gateway** (Kubernetes Gateway API) | Routes by host and path: `/` → frontend, `/api` → API, `auth.` host → Keycloak. It blocks `/internal`, `/actuator` and `/api/docs` on the app host and the Keycloak admin console (`/admin`, `/realms/master`) on the auth host. |
-| Web | **frontend** (nginx serving the Angular build) | Static single-page app with strict security headers (CSP, HSTS, `frame-ancestors 'none'`). It talks only to `/api` and to Keycloak. |
-| Identity | **Keycloak 26** (with the Artemis sign-in theme) | Sign-in, registration and accounts (OpenID Connect, Authorization Code + PKCE). The API validates its JWTs (issuer + audience). |
-| Application | **api** (Spring Boot, modular monolith) | Organizations, repositories, pipelines, findings, policies and reports. It hands scan jobs to the runner and stores the results. |
-| Workers | **scanner runner** | Polls the API for jobs, clones the repository into an in-memory workspace and runs the security tools as separate programs. It sends back normalized findings, logs and the SBOM, then wipes the workspace. It runs non-root with a read-only filesystem, dropped capabilities and CPU/memory limits. |
-| Data | **PostgreSQL 18** | One instance with two databases (app and Keycloak) on a persistent volume. It is reachable only inside the cluster. |
+| Component | Role |
+| --- | --- |
+| **sentinela-web** (separate repository) | Single-page app. Reaches the API only through `api-gateway` and signs in with Keycloak. |
+| **auth-proxy** (Caddy) | Terminates HTTPS for Keycloak at `https://auth.sentinela.localhost:9443`. |
+| **keycloak** (Keycloak 26, Sentinela sign-in theme) | Sign-in, registration and accounts (OpenID Connect, Authorization Code + PKCE). The API validates its JWTs (issuer + audience). |
+| **api** (Spring Boot, modular monolith) | Organizations, repositories, pipelines, findings, the PII module, policies and reports. It hands scan jobs to the runner and stores the results. |
+| **api-gateway** (Caddy) | The only way into the API for the scanner and the web container, so neither can reach the database, Keycloak or the JDWP debug port. |
+| **scanner** runner | Polls the API for jobs, clones the repository into an in-memory workspace and runs the security tools as separate programs. It sends back normalized findings, logs and the SBOM, then wipes the workspace. Non-root, read-only filesystem, dropped capabilities, CPU/memory limits. |
+| **db** (PostgreSQL 18) | One instance with two databases (app and Keycloak) on a persistent volume. |
+| **mailpit** | Catches Keycloak e-mails in development. |
 
-**Request flow:** the browser opens `artemisappsec.papopromines.com.br`. Cloudflare terminates TLS and forwards the request through the tunnel to `cloudflared`, which passes it to the Istio gateway, which routes it to the frontend or the API. To sign in, the app redirects to `auth.artemisappsec.papopromines.com.br` (Keycloak, same tab) and gets an access token back. It then calls `/api` with that token and the `X-Artemis-Organization` header.
+**Request flow:** the browser opens the app, which redirects to Keycloak to sign in and gets an access token back. It then calls `/api` with that token and the `X-Sentinela-Organization` header.
 
-**Scan flow:** a user starts a scan, so the API queues a pipeline run. The scanner claims it through the internal job API (in-cluster only, never routed by the gateway) and clones the repository over SSH with that repository's deploy key. It then runs the enabled stages and reports each one back. The API applies the policy gates and stores the findings.
-
-**Local development** uses the same containers through Docker Compose. `artemis-appsec-backend` starts db, keycloak, a Caddy TLS proxy for Keycloak, Mailpit, the api, an internal Caddy gateway for the scanner, and the scanner; `artemis-appsec-frontend` starts the Angular dev server. Locally, Caddy is the reverse proxy and there is no tunnel. Images for production are built from `main`, tagged `latest` and pulled by the cluster; Argo CD keeps the cluster in sync with the deployment manifests.
+**Scan flow:** a user starts a scan, so the API queues a pipeline run. The scanner claims it through the internal job API and clones the repository over SSH with that repository's deploy key. It then runs the enabled stages (including `pii`) and reports each one back. The API applies the policy gates and stores the findings.
 
 ## Running locally
 
@@ -118,8 +109,8 @@ docker compose up -d
 | API | http://localhost:8080/api/v1 |
 | OpenAPI / Swagger UI | http://localhost:8080/api/docs/ui (dev profile only; elsewhere off unless `API_DOCS_ENABLED=true`) |
 | Health | http://localhost:8080/actuator/health |
-| Keycloak (sign-in, registration, account) | https://auth.artemisappsec.localhost:9443/realms/artemisappsec/account |
-| Keycloak admin console | https://auth.artemisappsec.localhost:9443/admin (`KEYCLOAK_ADMIN_*` in `.env`) |
+| Keycloak (sign-in, registration, account) | https://auth.sentinela.localhost:9443/realms/sentinela/account |
+| Keycloak admin console | https://auth.sentinela.localhost:9443/admin (`KEYCLOAK_ADMIN_*` in `.env`) |
 | Mailpit (dev e-mails) | http://localhost:8025 |
 | Remote debugger (JDWP) | `localhost:5005` (host only; the scanner reaches the API through `api-gateway`, never the debug port) |
 | PostgreSQL | `localhost:5432` |
@@ -140,54 +131,54 @@ docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DRO
 docker compose start api
 ```
 
-Production image: `docker build -t artemisappsec-api .` (multi-stage, non-root, layered jar).
+Production image: `docker build -t sentinela-api .` (multi-stage, non-root, layered jar).
 
 **Memory limits** (the stack is sized for a 16 GB machine, ~4.5 GB in total): `db` 512 MB, `api` 1.5 GB (Maven `-Xmx384m`, application JVM `-Xmx640m -XX:+UseSerialGC`), `keycloak` 768 MB, `mailpit` 64 MB, `auth-proxy` 64 MB, `api-gateway` 64 MB, `scanner` 2 GB (+ 2 CPUs, 512 processes).
 
 ## Authentication (Keycloak)
 
-Keycloak 26.4 is the OpenID Connect provider (realm `artemisappsec`, imported from `keycloak/realm-artemisappsec.json` on first start); the API is an OAuth2 resource server.
+Keycloak 26.4 is the OpenID Connect provider (realm `sentinela`, imported from `keycloak/realm-sentinela.json` on first start); the API is an OAuth2 resource server.
 
 ```
 browser ──https──> Caddy :9443 (auth-proxy) ──> Keycloak :8080
-API ──http──> keycloak:8080/realms/artemisappsec/protocol/openid-connect/certs   (internal, signing keys)
+API ──http──> keycloak:8080/realms/sentinela/protocol/openid-connect/certs   (internal, signing keys)
 ```
 
-- **TLS:** Caddy terminates HTTPS with its local CA at `https://auth.artemisappsec.localhost:9443` (`*.localhost` resolves to your machine). Trust Caddy's root CA once (`docker compose cp auth-proxy:/data/caddy/pki/authorities/local/root.crt .`) or accept the warning. Keycloak runs with `--proxy-headers=xforwarded` and a fixed public `--hostname`.
-- **Sign-in pages (Artemis theme):** `keycloak/themes/artemis/login` extends Keycloak's `keycloak.v2` login theme with the Artemis layout (navy information panel, logo, IBM Plex fonts served by Keycloak itself, light/dark from the OS, en/pt-BR). Only `template.ftl` (layout), `resources/css/artemis.css` (colors on PatternFly variables) and `messages/` are customised, so every Keycloak page — sign-in, registration, password reset, Terms, required actions — keeps Keycloak's logic and security; passwords are never handled by the app. The realm sets `loginTheme: artemis`; the client's `baseUrl` feeds the “Back to Artemis” and legal links. Dev mounts the folder and disables theme caching (edit and reload); where the folder can't be mounted (Kubernetes) use the image built by `keycloak/Dockerfile` (official Keycloak + this theme, published as `artemis-appsec/keycloak:latest`); for an existing realm: `kcadm.sh update realms/artemisappsec -s loginTheme=artemis`. The app passes `ui_locales` so the pages open in the app's language.
-- **Realm:** self-registration (e-mail verification **off**: no outgoing mailbox yet; e-mails stay unique per account), Terms of Use / Privacy Policy acceptance on first sign-in (required action with links to the app), password policy (12–128 chars, not username/e-mail, history 3), brute-force protection, en/pt-BR, reset password, account deletion, Keycloak Organizations **off** (unused: tenancy lives in Artemis), user and admin events stored for 90 days (`eventsEnabled`, `adminEventsEnabled` without representations, `eventsExpiration`/`adminEventsExpiration` 7776000 s; Keycloak admin console → Events) — the audit trail of sign-ins and of what the `artemisappsec-admin-api` service account does. Dev e-mails go to **Mailpit** (http://localhost:8025); set `KC_SMTP_*` for a real server.
-- **Client:** `artemisappsec-web`, public, Authorization Code + PKCE (S256), redirect `ARTEMISAPPSEC_WEB_ORIGIN/auth/callback`, post-logout redirect to the app, audience mapper adding `artemisappsec-api` to access tokens. `prompt=create` opens the registration page.
+- **TLS:** Caddy terminates HTTPS with its local CA at `https://auth.sentinela.localhost:9443` (`*.localhost` resolves to your machine). Trust Caddy's root CA once (`docker compose cp auth-proxy:/data/caddy/pki/authorities/local/root.crt .`) or accept the warning. Keycloak runs with `--proxy-headers=xforwarded` and a fixed public `--hostname`.
+- **Sign-in pages (Sentinela theme):** `keycloak/themes/sentinela/login` extends Keycloak's `keycloak.v2` login theme with the Sentinela layout (navy information panel, logo, IBM Plex fonts served by Keycloak itself, light/dark from the OS, en/pt-BR). Only `template.ftl` (layout), `resources/css/sentinela.css` (colors on PatternFly variables) and `messages/` are customised, so every Keycloak page — sign-in, registration, password reset, Terms, required actions — keeps Keycloak's logic and security; passwords are never handled by the app. The realm sets `loginTheme: sentinela`; the client's `baseUrl` feeds the “Back to Sentinela” and legal links. Dev mounts the folder and disables theme caching (edit and reload); where the folder can't be mounted (Kubernetes) use the image built by `keycloak/Dockerfile` (official Keycloak + this theme, published as `sentinela/keycloak:latest`); for an existing realm: `kcadm.sh update realms/sentinela -s loginTheme=sentinela`. The app passes `ui_locales` so the pages open in the app's language.
+- **Realm:** self-registration (e-mail verification **off**: no outgoing mailbox yet; e-mails stay unique per account), Terms of Use / Privacy Policy acceptance on first sign-in (required action with links to the app), password policy (12–128 chars, not username/e-mail, history 3), brute-force protection, en/pt-BR, reset password, account deletion, Keycloak Organizations **off** (unused: tenancy lives in Sentinela), user and admin events stored for 90 days (`eventsEnabled`, `adminEventsEnabled` without representations, `eventsExpiration`/`adminEventsExpiration` 7776000 s; Keycloak admin console → Events) — the audit trail of sign-ins and of what the `sentinela-admin-api` service account does. Dev e-mails go to **Mailpit** (http://localhost:8025); set `KC_SMTP_*` for a real server.
+- **Client:** `sentinela-web`, public, Authorization Code + PKCE (S256), redirect `SENTINELA_WEB_ORIGIN/auth/callback`, post-logout redirect to the app, audience mapper adding `sentinela-api` to access tokens. `prompt=create` opens the registration page.
 - **No offline tokens:** the SPA client has no optional `offline_access` scope (long-lived offline refresh tokens in browser storage would outlive the SSO session if stolen). The realm file is only imported on first start; to apply this to an existing realm:
   ```sh
   docker compose exec keycloak sh -c '
     k=/opt/keycloak/bin/kcadm.sh
     $k config credentials --server http://localhost:8080 --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD"
-    CID=$($k get clients -r artemisappsec -q clientId=artemisappsec-web --fields id --format csv --noquotes)
-    SID=$($k get client-scopes -r artemisappsec --fields id,name --format csv --noquotes | grep ",offline_access$" | cut -d, -f1)
-    $k delete clients/$CID/optional-client-scopes/$SID -r artemisappsec'
+    CID=$($k get clients -r sentinela -q clientId=sentinela-web --fields id --format csv --noquotes)
+    SID=$($k get client-scopes -r sentinela --fields id,name --format csv --noquotes | grep ",offline_access$" | cut -d, -f1)
+    $k delete clients/$CID/optional-client-scopes/$SID -r sentinela'
   ```
-- **No refresh tokens for the SPA:** `artemisappsec-web` has `use.refresh.tokens: false`, so the browser storage holds only the 15-minute access token (an XSS can't steal a long-lived refresh token); the app signs in again when it expires (the SSO session usually makes that silent).
+- **No refresh tokens for the SPA:** `sentinela-web` has `use.refresh.tokens: false`, so the browser storage holds only the 15-minute access token (an XSS can't steal a long-lived refresh token); the app signs in again when it expires (the SSO session usually makes that silent).
 - **Applying realm changes to an existing realm** (the realm file is imported only on first start; dev users stay):
   ```sh
   docker compose exec keycloak sh -c '
     k=/opt/keycloak/bin/kcadm.sh
     $k config credentials --server http://localhost:8080 --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD"
-    $k update realms/artemisappsec -s eventsEnabled=true -s eventsExpiration=7776000 -s adminEventsEnabled=true \
+    $k update realms/sentinela -s eventsEnabled=true -s eventsExpiration=7776000 -s adminEventsEnabled=true \
       -s adminEventsDetailsEnabled=false -s organizationsEnabled=false -s attributes.adminEventsExpiration=7776000
-    CID=$($k get clients -r artemisappsec -q clientId=artemisappsec-web --fields id --format csv --noquotes)
-    $k update clients/$CID -r artemisappsec -s "attributes.\"use.refresh.tokens\"=false"'
+    CID=$($k get clients -r sentinela -q clientId=sentinela-web --fields id --format csv --noquotes)
+    $k update clients/$CID -r sentinela -s "attributes.\"use.refresh.tokens\"=false"'
   ```
-- **Service account scope (accepted risk):** `artemisappsec-admin-api` holds `realm-management` `manage-users`, because Keycloak cannot grant "delete users" alone; with its secret someone could also reset passwords or change users. Treat `KEYCLOAK_ADMIN_API_CLIENT_SECRET` like the deploy-key master key (secrets manager, never in logs or tickets, rotate if exposed); the admin events above record every action it takes.
-- **API validation:** issuer, expiry and audience (`artemisappsec-api`); principal = `preferred_username`. Authorization is per organization (below); the only role read from the token is the realm role `artemis-admin` (`realm_access.roles` → `ROLE_ARTEMIS_ADMIN`, see "Platform administrators").
+- **Service account scope (accepted risk):** `sentinela-admin-api` holds `realm-management` `manage-users`, because Keycloak cannot grant "delete users" alone; with its secret someone could also reset passwords or change users. Treat `KEYCLOAK_ADMIN_API_CLIENT_SECRET` like the deploy-key master key (secrets manager, never in logs or tickets, rotate if exposed); the admin events above record every action it takes.
+- **API validation:** issuer, expiry and audience (`sentinela-api`); principal = `preferred_username`. Authorization is per organization (below); the only role read from the token is the realm role `sentinela-admin` (`realm_access.roles` → `ROLE_SENTINELA_ADMIN`, see "Platform administrators").
 - **Database:** Keycloak uses its own database/role (`keycloak`) in the same PostgreSQL instance, created idempotently by the `keycloak-db-init` job (`KEYCLOAK_DB_PASSWORD`).
-- **Dev users:** `./keycloak/create-dev-users.sh` creates `ana.souza`, `carla.mendes`, `daniel.rocha` and the platform administrator `admin.artemis` (realm role `artemis-admin`) (verified e-mail, random passwords) and writes `keycloak/secrets/dev-credentials.txt` (git-ignored).
+- **Dev users:** `./keycloak/create-dev-users.sh` creates `ana.souza`, `carla.mendes`, `daniel.rocha` and the platform administrator `admin.sentinela` (realm role `sentinela-admin`) (verified e-mail, random passwords) and writes `keycloak/secrets/dev-credentials.txt` (git-ignored).
 - `GET /api/v1/me` returns the signed-in user (`username`, `name`, `email`, `emailVerified`, `platformAdmin`).
 
 ## Organizations and permissions
 
-Artemis is multi-tenant: every repository, finding, run, report, policy, integration, key, token, member, invitation, and setting belongs to an **organization**. Tenancy and roles live in Artemis (not in Keycloak).
+Sentinela is multi-tenant: every repository, finding, run, report, policy, integration, key, token, member, invitation, and setting belongs to an **organization**. Tenancy and roles live in Sentinela (not in Keycloak).
 
-- **Tenant header:** every organization-scoped request carries `X-Artemis-Organization: <slug>` (the frontend sends the slug of its `/<slug>/…` URL). Missing header → `400` `organization-required`; unknown slug, not a member or inactive member → `404` `organization-not-found` (existence is not revealed; Artemis administrators get a read-only view instead, see "Platform administrators"); missing permission → `403` `forbidden` with `permission`. Endpoints without the header: `/me`, `/me/**`, `POST /organizations`, `/pipeline/stages`, `/admin/**`.
+- **Tenant header:** every organization-scoped request carries `X-Sentinela-Organization: <slug>` (the frontend sends the slug of its `/<slug>/…` URL). Missing header → `400` `organization-required`; unknown slug, not a member or inactive member → `404` `organization-not-found` (existence is not revealed; Sentinela administrators get a read-only view instead, see "Platform administrators"); missing permission → `403` `forbidden` with `permission`. Endpoints without the header: `/me`, `/me/**`, `POST /organizations`, `/pipeline/stages`, `/admin/**`.
 - **Membership:** a member is linked to the Keycloak account by `sub`. Members created before the account existed (seeds) are linked on first use only when the token's e-mail is **verified** (`email_verified`); e-mail verification is off in the realm, so new accounts join through invitation links.
 - **Roles → permissions** — defaults (`organization/domain/Role.java`), editable **per organization** (table `organization_role_permission`, V32; `organization/persistence/RolePermissionStore`):
 
@@ -205,7 +196,7 @@ Artemis is multi-tenant: every repository, finding, run, report, policy, integra
 - **Enforcement:** `organization/api/TenantInterceptor` resolves the tenant for every `/api/v1/**` handler (unless annotated `@WithoutOrganization`) and checks `@RequiresPermission`; `GET` defaults to `viewFindings` and any other method **without** the annotation is refused (fail closed). Controllers receive a `Tenant` parameter and pass `tenant.organizationId()` to services; every query is filtered by organization (directly or through its repositories), so ids/numbers from another organization return `404`.
 - **Rules:** only the owner manages admins (admins cannot assign, invite, demote or remove admins → 403 `owner-only`); one owner per organization; ownership is transferred (`POST /members/transfer-ownership`, the old owner becomes admin), never assigned; nobody changes their own role or removes themselves (they leave); the owner cannot leave. Each account can own **one organization** (409 `organization-limit` on creation; ownership can only be transferred to someone who owns no organization). Organizations owned before this rule stay available.
 - **Account endpoints:** `GET /me/organizations` (`[{slug, name, role, permissions, features}]`), `POST /organizations` (`{name, defaultLanguage?}`, slug derived from the name → the creator becomes owner; default settings, integration catalogue and policies are provisioned), `GET /me/invitations` (pending, non-expired invitations for the account's e-mail), `POST /me/invitations/{id}/accept|decline`, `POST /me/organizations/{slug}/leave`.
-- **Slugs:** `^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$`, unique (`409 slug-taken`), not an app route (`409 slug-reserved`: `organizations`, `invite`, `auth`, `login`, `help`, `privacy`, `terms`, `api`, …). The slug is always derived from the name (lowercase, accents dropped, spaces and symbols → `-`, max 40) and cannot be edited; `general.slug` is ignored on `PUT /settings`. Renaming the organization needs the `organizationRename` feature (enabled by the Artemis administrators; `403 feature-not-enabled` otherwise) and changes the slug, so the organization's URLs change too (old URLs are not redirected).
+- **Slugs:** `^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$`, unique (`409 slug-taken`), not an app route (`409 slug-reserved`: `organizations`, `invite`, `auth`, `login`, `help`, `privacy`, `terms`, `api`, …). The slug is always derived from the name (lowercase, accents dropped, spaces and symbols → `-`, max 40) and cannot be edited; `general.slug` is ignored on `PUT /settings`. Renaming the organization needs the `organizationRename` feature (enabled by the Sentinela administrators; `403 feature-not-enabled` otherwise) and changes the slug, so the organization's URLs change too (old URLs are not redirected).
 - **Invitations** are joined through a **one-time link**: `POST /invitations` and `POST /invitations/{id}/resend` return a `token` (256-bit random, base64url) once — only its SHA-256 is stored, `GET /invitations` never includes it, and resending replaces it. The inviter shares the link (the frontend builds `<origin>/invite/<token>`); `POST /me/invitations/accept` `{"token"}` (any signed-in account, no org header) joins with the invited role and consumes the invitation (`404 invitation-not-found` if unknown/expired, `409 already-member`, `409 email-in-use` if another member already has the account's e-mail). `POST /me/invitations/preview` `{"token"}` → `{organizationName, organizationSlug, role}` shows what the link offers **without consuming it** (same `404 invitation-not-found`), so the frontend asks before joining; the token travels in the body, never in a URL the API sees. Links expire after 7 days. `GET /me/invitations` and accept/decline by id only match a **verified** e-mail (e-mail verification is off, so an unverified address must not be enough to claim an invitation). Invitations are not e-mailed.
 - **Personal data:** `GET /invitations` needs the `team` permission, and `GET /members` returns `email: null` to callers without it (data minimisation: only owners and admins see members' addresses).
 - Deleting an organization (`DELETE /organization`, owner) removes everything in it (database `ON DELETE CASCADE`).
@@ -219,9 +210,9 @@ All environment-specific values come from environment variables (secrets in prod
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | PostgreSQL connection |
 | `OIDC_ISSUER_URI` | Expected `iss` claim; also used for discovery when no JWKS URL is set |
 | `OIDC_JWK_SET_URI` | Optional URL of the signing keys (internal URL in Docker) |
-| `OIDC_AUDIENCE` | Required `aud` claim (default `artemisappsec-api`) |
+| `OIDC_AUDIENCE` | Required `aud` claim (default `sentinela-api`) |
 | `AUTH_ENABLED` | `dev` profile only: `false` disables authentication |
-| `AUTH_PUBLIC_URL`, `ARTEMISAPPSEC_WEB_ORIGIN` | Keycloak public URL (`--hostname`) and the frontend origin (redirect/CORS in the realm) |
+| `AUTH_PUBLIC_URL`, `SENTINELA_WEB_ORIGIN` | Keycloak public URL (`--hostname`) and the frontend origin (redirect/CORS in the realm) |
 | `KEYCLOAK_ADMIN_USERNAME`, `KEYCLOAK_ADMIN_PASSWORD`, `KEYCLOAK_DB_PASSWORD` | Keycloak bootstrap admin and database credentials |
 | `KC_SMTP_HOST`, `KC_SMTP_PORT`, `KC_SMTP_FROM` | Outgoing e-mail for password reset (Mailpit by default) |
 | `API_DOCS_ENABLED` | `true` to serve the OpenAPI document and Swagger UI under `/api/docs` outside the `dev` profile (default `false`: 404) |
@@ -230,7 +221,7 @@ All environment-specific values come from environment variables (secrets in prod
 | `SCANNER_TOKEN` | Shared secret of the scanner runner (≥ 32 random characters; the internal job API is disabled otherwise). Also `SCANNER_STAGE_TIMEOUT_SECONDS` (600), `SCANNER_MAX_REPO_SIZE_MB` (500), `SCANNER_STALE_RUN_MINUTES` (60) |
 | `SCANNER_RUN_TIMEOUT_SECONDS` | Wall-clock limit for one whole scan run in the runner (default 3600) |
 | `DEPLOY_KEY_ENCRYPTION_KEY`, `DEPLOY_KEY_ENCRYPTION_KEY_ID` | Master key (base64 of 32 random bytes, `openssl rand -base64 32`) and its label (`v1`) for encrypting the private deploy keys of private repositories. Without a valid key, private repositories are disabled (`503 deploy-keys-disabled`) |
-| `KEYCLOAK_ADMIN_API_CLIENT_SECRET` | Secret (≥ 32 characters, `openssl rand -hex 32`) of the confidential client `artemisappsec-admin-api` used for user management; also fed to the realm import. Without it the `/admin/users` endpoints answer `503 user-management-disabled`. Also `KEYCLOAK_ADMIN_API_URL` (internal Keycloak URL, `http://keycloak:8080` in Docker), `KEYCLOAK_ADMIN_API_REALM` (`artemisappsec`), `KEYCLOAK_ADMIN_API_CLIENT_ID` (`artemisappsec-admin-api`) |
+| `KEYCLOAK_ADMIN_API_CLIENT_SECRET` | Secret (≥ 32 characters, `openssl rand -hex 32`) of the confidential client `sentinela-admin-api` used for user management; also fed to the realm import. Without it the `/admin/users` endpoints answer `503 user-management-disabled`. Also `KEYCLOAK_ADMIN_API_URL` (internal Keycloak URL, `http://keycloak:8080` in Docker), `KEYCLOAK_ADMIN_API_REALM` (`sentinela`), `KEYCLOAK_ADMIN_API_CLIENT_ID` (`sentinela-admin-api`) |
 | `SCANS_PER_MONTH` | Pipeline runs allowed per organization and calendar month, UTC (default **40**). Exposed without sign-in at `GET /api/v1/limits` (`{scansPerMonth}`) so the home page, the guide and the Terms of Use show the configured value |
 | `ANTHROPIC_API_KEY` | Claude API key (console.anthropic.com) for AI-written report texts and finding explanations; empty = disabled (reports use the standard texts, `POST /findings/{id}/insight` answers 503). Also `ANTHROPIC_MODEL` (`claude-haiku-5-5`), `AI_TIMEOUT_SECONDS` (60), `AI_REPORTS_PER_DAY` (10) and `AI_INSIGHTS_PER_DAY` (50) — AI **attempts** per organization per UTC day, failed ones included; `AI_INSIGHTS_PER_DAY` also limits citizen alerts, counted separately — and `AI_SBOM_MAX_PACKAGES` (200, 0–5000: dependencies listed for the SBOM supply chain review, ~12 input tokens each) |
 
@@ -266,7 +257,7 @@ Rules:
 | `privacy` | Sentinela Cidadã: Risco Cidadão score and per-run snapshots (listens to `RunCompleted`), AI citizen alerts for privacy findings (see [PII module](#pii-module-sentinela-cidadã)) | `/api/v1/dashboard/citizen-risk`, `/api/v1/findings/{id}/citizen-alert` |
 | `policy` | Organization-wide stage gates (fail threshold, required), remediation SLAs, license allow/deny lists, risk acceptances | `/api/v1/policies`, `/api/v1/risk-acceptances` |
 | `account` | The signed-in user from the JWT | `/api/v1/me` |
-| `usage` | Artemis is free (no plans or payments). Monthly scan quota: **25 scans per organization** and UTC month (`organization_scan_usage` counter, V31: one row per org and month, incremented in the same transaction that queues a scan with a single conditional `INSERT … ON CONFLICT DO UPDATE … WHERE scans < limit`, so parallel requests cannot overshoot and deleting a repository does not give scans back). The run stores the reserved month (`pipeline_run.quota_month`, V34); runs that end before the runner reports any stage (access check or clone failed, runner rejected the job, cancelled, swept as stale) give the scan back (`quota_refunded`, shown on the run), while runs that ran stages count even when they fail. Settling and refunding are single conditional updates on the run row, so a scan is refunded at most once. Scans, re-runs and first scans are refused (`409`) once the month's limit is reached. `GET /usage` → `{scansThisMonth, scanLimit, periodStart, resetsAt, features}` | `/api/v1/usage` |
+| `usage` | Sentinela is free (no plans or payments). Monthly scan quota: **25 scans per organization** and UTC month (`organization_scan_usage` counter, V31: one row per org and month, incremented in the same transaction that queues a scan with a single conditional `INSERT … ON CONFLICT DO UPDATE … WHERE scans < limit`, so parallel requests cannot overshoot and deleting a repository does not give scans back). The run stores the reserved month (`pipeline_run.quota_month`, V34); runs that end before the runner reports any stage (access check or clone failed, runner rejected the job, cancelled, swept as stale) give the scan back (`quota_refunded`, shown on the run), while runs that ran stages count even when they fail. Settling and refunding are single conditional updates on the run row, so a scan is refunded at most once. Scans, re-runs and first scans are refused (`409`) once the month's limit is reached. `GET /usage` → `{scansThisMonth, scanLimit, periodStart, resetsAt, features}` | `/api/v1/usage` |
 | `organization` | Organizations (tenancy, memberships, creation, invitations for the signed-in account, permission enforcement), integrations, SSH deploy keys, team (members, invitations, roles, ownership), organization settings, API tokens. Optional features per organization (`organization_feature`, V41; `OrganizationFeatures` service used by other modules to gate them) and the platform administration API. Publishes `OrganizationCreated` (policy provisions its defaults) and counts repositories through the `RepositoryCounts` port (implemented by `project`) | `/api/v1/organizations`, `/api/v1/me/organizations`, `/api/v1/me/invitations`, `/api/v1/integrations`, `/api/v1/deploy-keys`, `/api/v1/members`, `/api/v1/invitations`, `/api/v1/roles`, `/api/v1/organization`, `/api/v1/api-tokens`, `/api/v1/admin/organizations` |
 
 Query parameters accept the same enum values as the JSON (`?status=falsePositive&severity=critical`), via `shared/config/WireEnumConverterFactory`.
@@ -274,19 +265,19 @@ Query parameters accept the same enum values as the JSON (`?status=falsePositive
 Security notes for `organization`:
 
 - Deploy keys accept **public keys only** (private keys are rejected); the type and key data are validated (ed25519, ECDSA, RSA ≥ 2048 bits) and the OpenSSH `SHA256:` fingerprint is computed server-side.
-- API tokens (`art_…`) are generated with `SecureRandom` and returned **once**; only their SHA-256 hash and last four characters are stored.
+- API tokens (`snt_…`) are generated with `SecureRandom` and returned **once**; only their SHA-256 hash and last four characters are stored.
 - The OIDC client secret is never stored or returned — it belongs in the deployment's secret store; the API only reports whether it is configured.
 
 JSON enum values match the frontend (`"Java + Spring"`, `"24h"`, `"sast"`, `"critical"`...).
 
 ## Scanner runner
 
-Security tools run **self-hosted** in the `scanner` service (image `artemisappsec/runner`, built from `scanner/`). No cloud scanning service is used.
+Security tools run **self-hosted** in the `scanner` service (image `sentinela/runner`, built from `scanner/`). No cloud scanning service is used.
 
 | Stage | Tool | License |
 | --- | --- | --- |
 | Secrets | Gitleaks 8.30.1 | MIT |
-| SAST | Semgrep CE 1.181.0 (engine) with Artemis's own 31 rules in `scanner/rules/*.yml` (JavaScript/TypeScript, Java + Spring, Python incl. Flask, Django and FastAPI) — never the Semgrep Registry | LGPL-2.1 |
+| SAST | Semgrep CE 1.181.0 (engine) with Sentinela's own 31 rules in `scanner/rules/*.yml` (JavaScript/TypeScript, Java + Spring, Python incl. Flask, Django and FastAPI) — never the Semgrep Registry | LGPL-2.1 |
 | PII (personal data) | Semgrep CE 1.181.0 with the Sentinela Cidadã rules in `scanner/rules/pii/` (mapping + taint flows; see [PII module](#pii-module-sentinela-cidadã)) | LGPL-2.1 |
 | Dependencies (SCA), licenses, IaC, Dockerfile | Trivy 0.76.0 | Apache-2.0 |
 | Dependencies (SCA, alternative) | Grype 0.120.1 | Apache-2.0 |
@@ -295,17 +286,17 @@ Security tools run **self-hosted** in the `scanner` service (image `artemisappse
 | Container image | Trivy 0.76.0 `image --image-src remote` on the **published** image in the repository's `containerImage` setting (e.g. `ghcr.io/acme/app:1.4`; skipped when empty). Pulled straight from the registry — never built or run, no container socket; the registry host must resolve to public addresses (default HTTPS port), max 700 MB compressed, layers unpacked in the in-memory workspace (`TMPDIR`) and wiped after the stage. Public registries only (anonymous pulls; Docker Hub rate-limits them). | Apache-2.0 |
 | DAST | — not available yet (needs an authorized, verified running target in its own sandbox); reported as skipped | |
 
-Licensing (see `scanner/THIRD_PARTY_NOTICES.md`, shipped in the image with every tool's license under `/usr/share/licenses/`): each tool is installed **unmodified** from its official release and executed as a **separate program**; no tool code is part of Artemis, so the GPL/AGPL terms do not extend to it. Vulnerability data comes from public databases (NVD, GitHub Advisory Database, OSV…): *This product uses data from the NVD API but is not endorsed or certified by the NVD.*
+Licensing (see `scanner/THIRD_PARTY_NOTICES.md`, shipped in the image with every tool's license under `/usr/share/licenses/`): each tool is installed **unmodified** from its official release and executed as a **separate program**; no tool code is part of Sentinela, so the GPL/AGPL terms do not extend to it. Vulnerability data comes from public databases (NVD, GitHub Advisory Database, OSV…): *This product uses data from the NVD API but is not endorsed or certified by the NVD.*
 
 **How it works.** The worker (`scanner/worker/`, Python standard library only) polls the API's internal job endpoints (`/internal/v1/jobs/…`, `Authorization: Bearer $SCANNER_TOKEN`), clones the repository, runs the enabled stages, normalizes every tool's output to one finding format and reports it back. The API decides stage/run status from the configured fail thresholds.
 
 **Security and privacy measures**
 
 - *Supply chain:* pinned tool versions; every download verified against a pinned SHA-256 (cross-checked with the official checksum files where published); multi-stage build, no build tools in the final image.
-- *Sandbox:* non-root user (uid 10001), read-only root filesystem, all Linux capabilities dropped, `no-new-privileges`, memory/CPU/process limits, no Docker socket, no database credentials. The `scanner` network is shared only with `api-gateway` (Caddy forwarding port 8080 to the API, `ARTEMIS_API_URL=http://api-gateway:8080`) — the API container itself (with its unauthenticated JDWP debug port 5005), the database and Keycloak are unreachable.
+- *Sandbox:* non-root user (uid 10001), read-only root filesystem, all Linux capabilities dropped, `no-new-privileges`, memory/CPU/process limits, no Docker socket, no database credentials. The `scanner` network is shared only with `api-gateway` (Caddy forwarding port 8080 to the API, `SENTINELA_API_URL=http://api-gateway:8080`) — the API container itself (with its unauthenticated JDWP debug port 5005), the database and Keycloak are unreachable.
 - *Process hygiene:* the worker reads `SCANNER_TOKEN` once, removes it from its environment and marks itself non-dumpable (`prctl(PR_SET_DUMPABLE, 0)`), so a tool compromised by a crafted repository (same uid) cannot read the token or decrypted deploy keys from `/proc/<pid>/environ` or memory. Every tool runs in its own process group that is killed as a whole on timeout; leftover processes are reaped between jobs (the worker is PID 1 — no `init`, which would keep the token readable in its own environment). One wall-clock budget per run, `SCANNER_RUN_TIMEOUT_SECONDS` (default 3600), caps all stages and folders together: when it runs out, the remaining stages are reported as skipped and the run fails.
 - *Untrusted repository config:* Gitleaks would read `.gitleaks.toml`/`.gitleaksignore` from the scanned tree, so they are deleted from the run's copy first (a repository cannot switch secret detection off). Trivy downloads remote Terraform modules while evaluating IaC and ignores `--offline-scan`/proxy settings for it (verified), which would let a repository make the runner request internal URLs; before the IaC stage every Terraform module `source` that is not a local `./`/`../` path is pointed at a missing local path, and `trivy config` runs with `--skip-check-update --tf-exclude-downloaded-modules`. `trivy image` gets `--` before the reference. The local `scan --dir` mode scans a copy of the directory.
-- *Clone:* **SSH only**, with the repository's Artemis-generated read-only deploy key (see "Private repositories") — public repositories too, so every scan proves the user was granted access by the repository's owner. Jobs for non-SSH repositories are refused by both the API and the runner (the runner's local `scan --url` dev mode can still clone public HTTPS). Credentials in URLs and hosts resolving to private, loopback, link-local or metadata addresses are refused; `--depth 1 --single-branch --no-tags`, no submodules, hooks, LFS, symlinks or redirects; size limit (500 MB) and timeouts. No repository code is ever executed (no installs, no builds).
+- *Clone:* **SSH only**, with the repository's Sentinela-generated read-only deploy key (see "Private repositories") — public repositories too, so every scan proves the user was granted access by the repository's owner. Jobs for non-SSH repositories are refused by both the API and the runner (the runner's local `scan --url` dev mode can still clone public HTTPS). Credentials in URLs and hosts resolving to private, loopback, link-local or metadata addresses are refused; `--depth 1 --single-branch --no-tags`, no submodules, hooks, LFS, symlinks or redirects; size limit (500 MB) and timeouts. No repository code is ever executed (no installs, no builds).
 - *Privacy:* source code lives in an in-memory workspace that is deleted after each run (and on start-up); only the dependency list (CycloneDX SBOM from Syft) is sent to the API and stored with the run. Secrets are redacted by Gitleaks and the worker never forwards secret values or code snippets — only rule, file and line. Logs are size-limited and redacted. Telemetry and update checks are disabled (`--metrics=off`, `*_CHECK_FOR_APP_UPDATE=false`); the only outbound traffic is the git clone and vulnerability-database downloads, which contain no user data. Trivy runs with `--offline-scan`, so it never asks package registries about the repository's dependencies (e.g. Maven Central for parent POMs, which also rate-limits with HTTP 429); the trade-off is that versions defined only in a remote parent POM/BOM may stay unresolved.
 
 **Run it.** Set `SCANNER_TOKEN` in `.env` (`openssl rand -hex 32`, at least 32 characters) and `docker compose up -d`; the first scan downloads the Trivy/Grype databases into the `scanner_cache` volume.
@@ -315,8 +306,8 @@ Licensing (see `scanner/THIRD_PARTY_NOTICES.md`, shipped in the image with every
 ```sh
 ./scanner/test-fixtures/make-secret-fixture.sh     # generates a fake credential (git-ignored)
 docker run --rm --read-only --cap-drop ALL --tmpfs /tmp --tmpfs /workspace:uid=10001,gid=10001 \
-  -v artemis-scan-cache:/cache -v "$PWD/scanner/test-fixtures/vulnerable-app:/fixture:ro" \
-  artemisappsec/runner:dev scan --dir /fixture                # or: scan --url https://github.com/org/repo.git --branch main
+  -v sentinela-scan-cache:/cache -v "$PWD/scanner/test-fixtures/vulnerable-app:/fixture:ro" \
+  sentinela/runner:dev scan --dir /fixture                # or: scan --url https://github.com/org/repo.git --branch main
 ```
 
 Options: `--stages secrets,sast,pii,...` and `--tool sca=Grype` / `--tool dockerfile=Trivy`. Output is the normalized JSON sent to the API.
@@ -326,7 +317,7 @@ PII stage on the CitizenTech prototype (no setup needed):
 ```sh
 docker run --rm --read-only --cap-drop ALL --tmpfs /tmp --tmpfs /workspace:uid=10001,gid=10001 \
   -v "$PWD/scanner/test-fixtures/citizentech-app:/fixture:ro" \
-  artemisappsec/runner:dev scan --dir /fixture --stages pii
+  sentinela/runner:dev scan --dir /fixture --stages pii
 ```
 
 ## Scanning (API side)
@@ -338,30 +329,30 @@ Scans run in the separate scanner runner (see "Scanner runner"); the API only qu
 3. For each stage the runner reports `completed`, `skipped` or `error` plus normalized findings. The API decides the stage status: `error` → `failed`; `completed` → `failed` when a finding reaches the stage's fail threshold (`failedBy`), `warning` when there are findings below it, `passed` otherwise.
 4. On `complete`, stages that were not reported are skipped and the run becomes `success` or `failed`; the repository's last scan time is updated. Runs still `running` after `SCANNER_STALE_RUN_MINUTES` (default 60) are failed by a scheduled sweep.
 
-Repository URLs must be SSH (`git@host:owner/repo.git`, `ssh://[git@]host[:port]/owner/repo(.git)`) — HTTPS is rejected with 400. The API also rejects hosts that cannot be a public Git server — single-label names (`db`, `api`, `localhost`), names starting with `-`, and IP literals in loopback, private, link-local (incl. `169.254.169.254`), shared (100.64/10), multicast or unique-local ranges — and URLs whose repository name would be empty, `.` or `..` (the runner still checks resolved addresses before connecting). Every repository is cloned with an Artemis-generated deploy key (see "Private repositories"); `V18` converted existing `https://host/owner/repo` URLs to `git@host:owner/repo.git` (access pending). Queueing a scan (`POST …/scans`, re-run) returns `409` until the repository's access is **verified**, so no quota is spent on scans that cannot clone.
+Repository URLs must be SSH (`git@host:owner/repo.git`, `ssh://[git@]host[:port]/owner/repo(.git)`) — HTTPS is rejected with 400. The API also rejects hosts that cannot be a public Git server — single-label names (`db`, `api`, `localhost`), names starting with `-`, and IP literals in loopback, private, link-local (incl. `169.254.169.254`), shared (100.64/10), multicast or unique-local ranges — and URLs whose repository name would be empty, `.` or `..` (the runner still checks resolved addresses before connecting). Every repository is cloned with an Sentinela-generated deploy key (see "Private repositories"); `V18` converted existing `https://host/owner/repo` URLs to `git@host:owner/repo.git` (access pending). Queueing a scan (`POST …/scans`, re-run) returns `409` until the repository's access is **verified**, so no quota is spent on scans that cannot clone.
 
 ### Optional features and platform administrators
 
-Artemis is free; there are no plans or payments. Three optional features are enabled **per organization** by the Artemis administrators: `aiTriage` (AI report texts and AI finding explanations), `scheduledScans` and `organizationRename`. They live in `organization_feature` (V41: `organization_id, feature, granted_by, granted_at`); V41 enabled all three for organizations that were on the former PRO plan (the `subscription` table is no longer read). Ungranted features answer `403` `feature-not-enabled` (with `feature`).
+Sentinela is free; there are no plans or payments. Three optional features are enabled **per organization** by the Sentinela administrators: `aiTriage` (AI report texts and AI finding explanations), `scheduledScans` and `organizationRename`. They live in `organization_feature` (V41: `organization_id, feature, granted_by, granted_at`); V41 enabled all three for organizations that were on the former PRO plan (the `subscription` table is no longer read). Ungranted features answer `403` `feature-not-enabled` (with `feature`).
 
-- **Platform administrator** = Keycloak realm role `artemis-admin` (in the realm import; the default `roles` client scope puts it in the access token's `realm_access.roles`). Grant it with `kcadm.sh add-roles -r artemisappsec --uusername <user> --rolename artemis-admin` (inside the Keycloak container, after `kcadm.sh config credentials …`); the user must sign in again to get a new token. For realms imported before the role existed, create it first: `kcadm.sh create roles -r artemisappsec -s name=artemis-admin`.
+- **Platform administrator** = Keycloak realm role `sentinela-admin` (in the realm import; the default `roles` client scope puts it in the access token's `realm_access.roles`). Grant it with `kcadm.sh add-roles -r sentinela --uusername <user> --rolename sentinela-admin` (inside the Keycloak container, after `kcadm.sh config credentials …`); the user must sign in again to get a new token. For realms imported before the role existed, create it first: `kcadm.sh create roles -r sentinela -s name=sentinela-admin`.
 - `GET /api/v1/admin/organizations` → `[{slug, name, createdAt, ownerName, memberCount, repositoryCount, features}]`, `GET /api/v1/admin/organizations/{slug}` → one entry, `PUT /api/v1/admin/organizations/{slug}/features` `{"features": [...]}` → the updated entry (`granted_by` = the admin's username) and `DELETE /api/v1/admin/organizations/{slug}` → `204` (same cascade as the owner's `DELETE /organization`: repositories, deploy keys, findings, runs, reports, members, invitations, settings, features, usage; logged at INFO with the admin's username and the slug). No organization header; `403` without the role.
-- **Read-only view of every organization:** the role grants **no membership**, but an administrator who is not a member of an organization resolves there as a fixed viewer — role `viewer`, permissions exactly `["viewFindings"]`, no member row (`memberId` null) — so every `GET` works (repositories, findings, runs, reports, dashboard, CSV export, team without e-mail addresses) and every write answers `403` `forbidden`. The organization's editable viewer row does not apply, so owners cannot widen it. If the administrator is also a member, the membership role wins. Each read-only visit is logged at INFO (`Artemis administrator <username> opened organization <slug> read-only`, at most once per hour per administrator and organization).
-- **Users:** `GET /api/v1/admin/users?search=&first=0&max=100` (`max` ≤ 200; `search` matches username, name and e-mail in Keycloak) → `{users: [{id, username, name, email, createdAt, enabled, platformAdmin, organizations: [{slug, name, role}]}], total}`. `id` is the Keycloak user id (`sub`); organizations come from the active `member` rows linked to it (`user_subject`); accounts without organizations are included. `DELETE /api/v1/admin/users/{id}` → `204`: removes every `member` row of the account, then deletes the Keycloak account (which ends its sessions); invitations it sent stay. Access tokens already issued stay valid until they expire (JWTs are checked offline), so the API refuses the deleted account's tokens on every `/api/v1/**` call (`401 unauthenticated`) for 20 minutes (`organization/service/DeletedAccounts`, in memory — per API instance; Artemis runs one). Refused with `409`: `cannot-delete-self`, `platform-admin` (remove the `artemis-admin` role in Keycloak first) and `owns-organizations` (with `organizations: [slugs]`; delete those organizations or have the owner transfer ownership first). Unknown id → `404`. Logged at INFO with the admin's username, the user id and username (no e-mail). The user can register again later (as a new account).
-- **Keycloak Admin API access:** the API calls Keycloak's Admin REST API with a client-credentials token (cached until 30 s before expiry) of the confidential client **`artemisappsec-admin-api`** (no browser, password or device flows; service account only) whose service account has exactly the `realm-management` roles `view-users`, `query-users` and `manage-users` (it can't change realm settings or grant roles). Platform-admin status is read per user from `users/{id}/role-mappings/realm/composite`. Missing secret → `503 user-management-disabled`; Keycloak unreachable or credentials rejected → `503 user-directory-unavailable` (details in the API log). The realm import creates the client on a fresh Keycloak (secret = `KEYCLOAK_ADMIN_API_CLIENT_SECRET`); `./keycloak/create-dev-users.sh` creates it on an existing dev realm (writing a generated secret to `.env` when empty). By hand, inside the Keycloak container:
+- **Read-only view of every organization:** the role grants **no membership**, but an administrator who is not a member of an organization resolves there as a fixed viewer — role `viewer`, permissions exactly `["viewFindings"]`, no member row (`memberId` null) — so every `GET` works (repositories, findings, runs, reports, dashboard, CSV export, team without e-mail addresses) and every write answers `403` `forbidden`. The organization's editable viewer row does not apply, so owners cannot widen it. If the administrator is also a member, the membership role wins. Each read-only visit is logged at INFO (`Sentinela administrator <username> opened organization <slug> read-only`, at most once per hour per administrator and organization).
+- **Users:** `GET /api/v1/admin/users?search=&first=0&max=100` (`max` ≤ 200; `search` matches username, name and e-mail in Keycloak) → `{users: [{id, username, name, email, createdAt, enabled, platformAdmin, organizations: [{slug, name, role}]}], total}`. `id` is the Keycloak user id (`sub`); organizations come from the active `member` rows linked to it (`user_subject`); accounts without organizations are included. `DELETE /api/v1/admin/users/{id}` → `204`: removes every `member` row of the account, then deletes the Keycloak account (which ends its sessions); invitations it sent stay. Access tokens already issued stay valid until they expire (JWTs are checked offline), so the API refuses the deleted account's tokens on every `/api/v1/**` call (`401 unauthenticated`) for 20 minutes (`organization/service/DeletedAccounts`, in memory — per API instance; Sentinela runs one). Refused with `409`: `cannot-delete-self`, `platform-admin` (remove the `sentinela-admin` role in Keycloak first) and `owns-organizations` (with `organizations: [slugs]`; delete those organizations or have the owner transfer ownership first). Unknown id → `404`. Logged at INFO with the admin's username, the user id and username (no e-mail). The user can register again later (as a new account).
+- **Keycloak Admin API access:** the API calls Keycloak's Admin REST API with a client-credentials token (cached until 30 s before expiry) of the confidential client **`sentinela-admin-api`** (no browser, password or device flows; service account only) whose service account has exactly the `realm-management` roles `view-users`, `query-users` and `manage-users` (it can't change realm settings or grant roles). Platform-admin status is read per user from `users/{id}/role-mappings/realm/composite`. Missing secret → `503 user-management-disabled`; Keycloak unreachable or credentials rejected → `503 user-directory-unavailable` (details in the API log). The realm import creates the client on a fresh Keycloak (secret = `KEYCLOAK_ADMIN_API_CLIENT_SECRET`); `./keycloak/create-dev-users.sh` creates it on an existing dev realm (writing a generated secret to `.env` when empty). By hand, inside the Keycloak container:
   ```sh
   docker compose exec keycloak sh -c '
     k=/opt/keycloak/bin/kcadm.sh
     $k config credentials --server http://localhost:8080 --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD"
-    $k create clients -r artemisappsec -s clientId=artemisappsec-admin-api -s "name=Artemis API (user administration)" \
+    $k create clients -r sentinela -s clientId=sentinela-admin-api -s "name=Sentinela API (user administration)" \
       -s enabled=true -s publicClient=false -s clientAuthenticatorType=client-secret -s serviceAccountsEnabled=true \
       -s standardFlowEnabled=false -s implicitFlowEnabled=false -s directAccessGrantsEnabled=false -s frontchannelLogout=false
-    $k add-roles -r artemisappsec --uusername service-account-artemisappsec-admin-api --cclientid realm-management \
+    $k add-roles -r sentinela --uusername service-account-sentinela-admin-api --cclientid realm-management \
       --rolename view-users --rolename query-users --rolename manage-users
-    CID=$($k get clients -r artemisappsec -q clientId=artemisappsec-admin-api --fields id --format csv --noquotes)
-    $k get clients/$CID/client-secret -r artemisappsec          # read the generated secret ("value")
-    # or set your own: $k update clients/$CID -r artemisappsec -s secret=<openssl rand -hex 32>
-    # or rotate:       $k create clients/$CID/client-secret -r artemisappsec'
+    CID=$($k get clients -r sentinela -q clientId=sentinela-admin-api --fields id --format csv --noquotes)
+    $k get clients/$CID/client-secret -r sentinela          # read the generated secret ("value")
+    # or set your own: $k update clients/$CID -r sentinela -s secret=<openssl rand -hex 32>
+    # or rotate:       $k create clients/$CID/client-secret -r sentinela'
   ```
   Put the secret in `KEYCLOAK_ADMIN_API_CLIENT_SECRET` (secrets manager in production) and recreate the API (`docker compose up -d api`).
   **Empty secret:** Keycloak accepts an empty client secret, so a realm imported while `KEYCLOAK_ADMIN_API_CLIENT_SECRET` was empty lets anyone obtain the service account's token with `client_secret=`. `docker-compose.yml` now refuses to start without the variable. To fix a realm imported that way, re-run `./keycloak/create-dev-users.sh` (it sets the client secret from `.env` through stdin, not on the command line) or by hand:
@@ -370,19 +361,19 @@ Artemis is free; there are no plans or payments. Three optional features are ena
   printf '{"secret":"%s"}' "$KEYCLOAK_ADMIN_API_CLIENT_SECRET" | docker compose exec -T keycloak sh -c '
     k=/opt/keycloak/bin/kcadm.sh
     $k config credentials --server http://localhost:8080 --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" </dev/null
-    CID=$($k get clients -r artemisappsec -q clientId=artemisappsec-admin-api --fields id --format csv --noquotes </dev/null)
-    $k update clients/$CID -r artemisappsec -f -'
+    CID=$($k get clients -r sentinela -q clientId=sentinela-admin-api --fields id --format csv --noquotes </dev/null)
+    $k update clients/$CID -r sentinela -f -'
   # must print 401:
-  curl -sk -o /dev/null -w '%{http_code}\n' -d grant_type=client_credentials -d client_id=artemisappsec-admin-api -d client_secret= \
-    https://auth.artemisappsec.localhost:9443/realms/artemisappsec/protocol/openid-connect/token
+  curl -sk -o /dev/null -w '%{http_code}\n' -d grant_type=client_credentials -d client_id=sentinela-admin-api -d client_secret= \
+    https://auth.sentinela.localhost:9443/realms/sentinela/protocol/openid-connect/token
   ```
 
 ### Scheduled scans (optional feature)
 
-A repository's `schedule` is `manual` (default), `push` (stored only; no webhooks yet) or a timed interval: `6h`, `24h`, `7d`. Timed schedules need the `scheduledScans` feature, enabled per organization by the Artemis administrators: choosing one without it returns `403` with `code: feature-not-enabled`; schedules saved earlier stay stored but inactive.
+A repository's `schedule` is `manual` (default), `push` (stored only; no webhooks yet) or a timed interval: `6h`, `24h`, `7d`. Timed schedules need the `scheduledScans` feature, enabled per organization by the Sentinela administrators: choosing one without it returns `403` with `code: feature-not-enabled`; schedules saved earlier stay stored but inactive.
 
 - `project.next_scan_at` (V36, UTC) is set to *now + interval* whenever the schedule changes and exposed as `nextScanAt` on repositories (null for manual/push).
-- `ScheduledScans` runs every minute: it locks up to 50 due repositories (`SELECT … FOR UPDATE SKIP LOCKED`) and moves `next_scan_at` one interval ahead in the same transaction, so several API instances never queue the same scan twice. Each due repository is then queued in its own transaction through the normal scan path (trigger `schedule`, actor `Artemis scheduler`): quota, policies and the runner's access re-check apply as for manual scans.
+- `ScheduledScans` runs every minute: it locks up to 50 due repositories (`SELECT … FOR UPDATE SKIP LOCKED`) and moves `next_scan_at` one interval ahead in the same transaction, so several API instances never queue the same scan twice. Each due repository is then queued in its own transaction through the normal scan path (trigger `schedule`, actor `Sentinela scheduler`): quota, policies and the runner's access re-check apply as for manual scans.
 - Skipped until the next interval (nothing is recorded): organizations without the feature, repositories whose access is not verified, repositories with a run already queued or running, and scans refused by the quota or by having no enabled stages.
 
 ### Private repositories
@@ -401,7 +392,7 @@ Public endpoints (organization-scoped):
 | `GET /api/v1/repositories/{name}/access` | viewFindings | `{type: "public"\|"ssh", deployKey: {id, publicKey, fingerprint, createdAt, lastUsedAt} \| null, host, hostKeyFingerprint, hostKeyPinned, lastCheck: {id, status: queued\|running\|ok\|failed, message, requestedAt, finishedAt} \| null}` (public repositories: only `type`, the rest `null`/`false`) |
 | `POST /api/v1/repositories/{name}/access/key` | integrations | `200` access view with the new key; `409` for public repositories; `503 deploy-keys-disabled` without a master key |
 | `POST /api/v1/repositories/{name}/access/checks` | pipelines | `202` access view (an already queued/running check is reused); `409` when there is no key |
-| `GET /api/v1/deploy-keys` | viewFindings | items `{id, name, keyType, fingerprint, repository, addedAt, lastUsedAt, managed, publicKey}` — `managed` keys were generated by Artemis (`publicKey` set); older public-only keys cannot clone. Keys are no longer pasted (`POST` removed) |
+| `GET /api/v1/deploy-keys` | viewFindings | items `{id, name, keyType, fingerprint, repository, addedAt, lastUsedAt, managed, publicKey}` — `managed` keys were generated by Sentinela (`publicKey` set); older public-only keys cannot clone. Keys are no longer pasted (`POST` removed) |
 | `DELETE /api/v1/deploy-keys/{id}` | integrations | `204` |
 
 Repository summaries also carry `access` (`public` \| `ssh`) and `accessStatus` (`pending` \| `verified` \| `failed`, `null` for public).
@@ -424,7 +415,7 @@ Repository summaries also carry `access` (`public` \| `ssh`) and `accessStatus` 
 
 **SBOMs:** after Syft succeeds the runner streams the CycloneDX JSON to `PUT /internal/v1/jobs/{runId}/sbom?folder=` (one per scanned monorepo folder; empty = whole repository) and adds a line to the stage log. SBOMs above 20 MB are not uploaded ("SBOM too large to store"), and a failed upload only adds a warning to the log — the stage never fails because of it. The API checks the run is running with its SBOM stage pending, the size and that the body is a JSON object with `"bomFormat": "CycloneDX"` (streaming parse, counting `components`), then stores it gzip-compressed in `pipeline_run_sbom` (V45: `run_id` → `pipeline_run` `ON DELETE CASCADE`, `folder`, `content`, `size_bytes`, `components`, `created_at`; upsert per run and folder), so it is deleted with the run, a purged repository or the organization. Run details include `sboms: [{folder, components, sizeBytes}]`; `GET /api/v1/pipeline-runs/{number}/sbom?folder=` (`viewFindings`, tenant-scoped, also for removed repositories' runs) downloads it as `application/vnd.cyclonedx+json` with `Content-Disposition: attachment; filename="<repository>-run-<number>[-<folder>]-sbom.cdx.json"` (characters outside `A-Za-z0-9._-` replaced by `-`); `404` when the run stored none.
 
-**Findings CSV:** `GET /api/v1/findings/export` (same filters as `GET /findings`, `viewFindings`) → `text/csv; charset=UTF-8` with a BOM, `Content-Disposition: attachment; filename="artemis-findings-<org>-<date>.csv"`; RFC 4180 quoting and CSV-injection protection (cells starting with `= + - @` tab/CR get a leading `'`).
+**Findings CSV:** `GET /api/v1/findings/export` (same filters as `GET /findings`, `viewFindings`) → `text/csv; charset=UTF-8` with a BOM, `Content-Disposition: attachment; filename="sentinela-findings-<org>-<date>.csv"`; RFC 4180 quoting and CSV-injection protection (cells starting with `= + - @` tab/CR get a leading `'`).
 
 **Stack detection:** after a successful access check (`ls-remote` OK) the runner shallow-clones the branch with the same hardened clone, reads manifest files only (never executes or imports anything; stdlib `json` + plain text, 512 KB per file and 2 MiB of Python manifests per folder, depth 3, skipping `node_modules`, `vendor`, virtualenvs, build output and hidden folders) and reports `detected: {stack, folders:[{path, stack}]} | null` in `PUT /internal/v1/access-checks/{id}`; the copy is wiped right after. Rules: `package.json` with `@angular/core` → Angular, else `react`/`react-dom`/`next` → React; `pom.xml`/`build.gradle(.kts)` mentioning `spring-boot` → Java + Spring; `requirements*.txt`/`pyproject.toml`/`Pipfile`/`setup.py`/`setup.cfg` mentioning django / fastapi / flask → the matching Python stack. Matches in sub-folders (shallowest per subtree, max 20) make a monorepo; otherwise a root match sets the single stack. The detection clone is smaller than a scan's (200 MB, at most 120 s). A failed clone/detection never fails the access check. The API validates the labels and folder paths and applies them only when `project.stack_source` (V33) is `PENDING` or `DETECTED` — `MANUAL` (any user change of stack or folders) is never overridden. `POST /repositories` with `stack: null` and no folders = `PENDING` (summaries expose `stack: null` and `stackSource`); `PUT …/settings` accepts an optional `stack` for non-monorepo repositories.
 
@@ -457,7 +448,7 @@ Finding payload:
 
 ### Reports
 
-`POST /reports {sections: [summary, recommendations, sbom] (subset; null = summary + recommendations), scope: <repository>|null, period: week|month|quarter}` → `202` with the report `generating` (period = the last complete one, UTC). `POST /reports/{id}/retry` (triage) puts a `failed` report back to `generating` (`409 report-not-failed` otherwise). An organization can have at most **3 reports `generating`** at a time; requesting or retrying another → `429 report-queue-full`. Summaries carry `status: generating|ready|failed`, `error` (`generation-failed`, `too-many-attempts`) and `narrative` (`ai`|`artemis`, who wrote the texts).
+`POST /reports {sections: [summary, recommendations, sbom] (subset; null = summary + recommendations), scope: <repository>|null, period: week|month|quarter}` → `202` with the report `generating` (period = the last complete one, UTC). `POST /reports/{id}/retry` (triage) puts a `failed` report back to `generating` (`409 report-not-failed` otherwise). An organization can have at most **3 reports `generating`** at a time; requesting or retrying another → `429 report-queue-full`. Summaries carry `status: generating|ready|failed`, `error` (`generation-failed`, `too-many-attempts`) and `narrative` (`ai`|`sentinela`, who wrote the texts).
 
 - **Worker** (`ReportGenerator`, every 5 s, up to 10 reports per tick): claims the oldest `GENERATING` report with `SELECT … FOR UPDATE SKIP LOCKED` (safe with several API instances), records the attempt (`attempts`, `started_at`, V42) and commits; builds the content and calls the AI outside any transaction; saves it as `READY`. Exceptions → `FAILED` (`generation-failed`, only the exception class is logged). A report left `GENERATING` by a crashed instance is claimed again after 10 minutes and fails after 3 attempts (`too-many-attempts`). The scheduler pool has 3 threads so a slow AI call doesn't delay other jobs.
 - **Figures** (`ReportBuilder`, from `FindingService.search`, scoped to the repository when set): detected = first detections in the period; fixed = findings now `fixed` whose last status change is in the period; open = open/triaged now, removed repositories left out; MTTR = mean days from detection to fix of those fixed; SLA compliance = findings with a deadline that are open within it or were fixed in time ÷ all of them (100 % when none); trend = 7-day blocks from the start of the period (ISO week labels); severities, top 15 risks (open critical/high by CVSS — or 9.0/7.0 when unscored — then age) and OWASP Top 10 2021 categories describe the open findings. OWASP mapping (`OwaspTop10`): dependency vulnerabilities → A06, secrets → A07 (CWE-798), code/config findings by their CWE (static map of the CWEs OWASP lists per category), config without a mapped CWE → A05, the rest (and licenses) → `OTHER` (shown only when non-zero).
@@ -507,16 +498,14 @@ Policies are stored per organization (`policy` module) and applied through two p
 ## Contributing
 
 - **How to contribute:** see [CONTRIBUTING.md](CONTRIBUTING.md) (contributions are licensed under MIT).
-- **Branches:** `main` (stable) and `dev` (integration). Create `feat/*` or `bugfix/*` branches from `dev`.
+- **Branches:** `main` (stable) and `develop` (integration). Create `feat/*` or `bugfix/*` branches from `develop`.
 - **Commits:** [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).
 - Update this README when modules, endpoints or conventions change.
 
 ## License
 
-Artemis is fully open source under the [MIT License](LICENSE): anyone may use, copy, modify, distribute and sell it, with no restrictions beyond keeping the license notice. Contributions are welcome and are licensed under the same terms (see [CONTRIBUTING.md](CONTRIBUTING.md)). The security tools run by the scanner (Gitleaks, Semgrep CE, Trivy, Grype, Syft, Hadolint) are separate programs under their own licenses; see the in-app Third-party notices page (`/licenses`) and the backend's `scanner/THIRD_PARTY_NOTICES.md`.
+Sentinela is fully open source under the [MIT License](LICENSE): anyone may use, copy, modify, distribute and sell it, with no restrictions beyond keeping the license notice. Contributions are welcome and are licensed under the same terms (see [CONTRIBUTING.md](CONTRIBUTING.md)). The security tools run by the scanner (Gitleaks, Semgrep CE, Trivy, Grype, Syft, Hadolint) are separate programs under their own licenses; see the in-app Third-party notices page (`/licenses`) and the backend's `scanner/THIRD_PARTY_NOTICES.md`.
 
 ## About
 
-Sentinela Cidadã is an academic project (FIAP, GS 2026.2 CitizenTech) built as a fork of Artemis; it is likewise a fictional product, with fictitious demo data only, and is distributed under the same MIT License.
-
-Artemis is a **fictional product** created for an academic presentation and developed by [leonardorscarpitta](https://github.com/leonardorscarpitta). The developer claims no ownership of the code or of the name: there is no Artemis company, "Artemis" is not a registered trademark, and the project is not affiliated with NASA's Artemis program or any other product named Artemis. The in-app texts (Privacy Policy, Terms of Use, footer) are written as if Artemis were a real service, for the demonstration. Anyone running their own instance is responsible for it and for the data it stores.
+Sentinela Cidadã is an academic project (FIAP, GS 2026.2 CitizenTech) developed by [leonardorscarpitta](https://github.com/leonardorscarpitta). It is a **fictional product** with fictitious demo data only: there is no Sentinela company and the name is not a registered trademark. Anyone running their own instance is responsible for it and for the data it stores.

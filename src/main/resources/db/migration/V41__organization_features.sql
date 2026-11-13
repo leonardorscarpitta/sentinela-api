@@ -1,4 +1,4 @@
--- Artemis is free: plans are gone. Optional features are enabled per organization by the Artemis administrators.
+-- Sentinela is free: plans are gone. Optional features are enabled per organization by the Sentinela administrators.
 CREATE TABLE organization_feature (
     organization_id UUID         NOT NULL REFERENCES organization (id) ON DELETE CASCADE,
     feature         VARCHAR(40)  NOT NULL,

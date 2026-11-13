@@ -11,7 +11,7 @@ rules:
     metadata:
       title: Documento do cidadão gravado em log
       cwe: "CWE-532: Insertion of Sensitive Information into Log File"
-      artemis-severity: high
+      sentinela-severity: high
       sentinela: { category: identification, type: flow, sink: log }
     pattern-sources: &js-src-identification
       - patterns:
@@ -42,7 +42,7 @@ rules:
     metadata:
       title: Documento do cidadão enviado a serviço externo
       cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
-      artemis-severity: high
+      sentinela-severity: high
       sentinela: { category: identification, type: flow, sink: externalApi }
     pattern-sources: *js-src-identification
     pattern-sanitizers: *js-sanitizers
@@ -63,7 +63,7 @@ rules:
     metadata:
       title: Documento do cidadão exposto na resposta HTTP
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: high
+      sentinela-severity: high
       sentinela: { category: identification, type: flow, sink: httpResponse }
     pattern-sources: *js-src-identification
     pattern-sanitizers: *js-sanitizers
@@ -84,7 +84,7 @@ rules:
     metadata:
       title: Dado de saúde gravado em log
       cwe: "CWE-532: Insertion of Sensitive Information into Log File"
-      artemis-severity: high
+      sentinela-severity: high
       sentinela: { category: health, type: flow, sink: log }
     pattern-sources: &js-src-health
       - patterns:
@@ -103,7 +103,7 @@ rules:
     metadata:
       title: Dado de saúde enviado a serviço externo
       cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
-      artemis-severity: critical
+      sentinela-severity: critical
       sentinela: { category: health, type: flow, sink: externalApi }
     pattern-sources: *js-src-health
     pattern-sanitizers: *js-sanitizers
@@ -117,7 +117,7 @@ rules:
     metadata:
       title: Dado de saúde exposto na resposta HTTP
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: critical
+      sentinela-severity: critical
       sentinela: { category: health, type: flow, sink: httpResponse }
     pattern-sources: *js-src-health
     pattern-sanitizers: *js-sanitizers
@@ -132,7 +132,7 @@ rules:
     metadata:
       title: Senha do cidadão gravada em log
       cwe: "CWE-532: Insertion of Sensitive Information into Log File"
-      artemis-severity: critical
+      sentinela-severity: critical
       sentinela: { category: credential, type: flow, sink: log }
     pattern-sources: &js-src-credential
       - patterns:
@@ -154,7 +154,7 @@ rules:
     metadata:
       title: Senha enviada a serviço externo
       cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
-      artemis-severity: critical
+      sentinela-severity: critical
       sentinela: { category: credential, type: flow, sink: externalApi }
     pattern-sources: *js-src-credential
     pattern-sanitizers: *js-sanitizers
@@ -168,7 +168,7 @@ rules:
     metadata:
       title: Senha exposta na resposta HTTP
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: critical
+      sentinela-severity: critical
       sentinela: { category: credential, type: flow, sink: httpResponse }
     pattern-sources: *js-src-credential
     pattern-sanitizers: *js-sanitizers
@@ -183,7 +183,7 @@ rules:
     metadata:
       title: Contato do cidadão gravado em log
       cwe: "CWE-532: Insertion of Sensitive Information into Log File"
-      artemis-severity: high
+      sentinela-severity: high
       sentinela: { category: contact, type: flow, sink: log }
     pattern-sources: &js-src-contact
       - patterns:
@@ -205,7 +205,7 @@ rules:
     metadata:
       title: Contato do cidadão enviado a serviço externo
       cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
-      artemis-severity: high
+      sentinela-severity: high
       sentinela: { category: contact, type: flow, sink: externalApi }
     pattern-sources: *js-src-contact
     pattern-sanitizers: *js-sanitizers
@@ -219,7 +219,7 @@ rules:
     metadata:
       title: Contato do cidadão exposto na resposta HTTP
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: high
+      sentinela-severity: high
       sentinela: { category: contact, type: flow, sink: httpResponse }
     pattern-sources: *js-src-contact
     pattern-sanitizers: *js-sanitizers
@@ -234,7 +234,7 @@ rules:
     metadata:
       title: Dado financeiro gravado em log
       cwe: "CWE-532: Insertion of Sensitive Information into Log File"
-      artemis-severity: high
+      sentinela-severity: high
       sentinela: { category: financial, type: flow, sink: log }
     pattern-sources: &js-src-financial
       - patterns:
@@ -256,7 +256,7 @@ rules:
     metadata:
       title: Dado financeiro enviado a serviço externo
       cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
-      artemis-severity: critical
+      sentinela-severity: critical
       sentinela: { category: financial, type: flow, sink: externalApi }
     pattern-sources: *js-src-financial
     pattern-sanitizers: *js-sanitizers
@@ -270,7 +270,7 @@ rules:
     metadata:
       title: Dado financeiro exposto na resposta HTTP
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: critical
+      sentinela-severity: critical
       sentinela: { category: financial, type: flow, sink: httpResponse }
     pattern-sources: *js-src-financial
     pattern-sanitizers: *js-sanitizers

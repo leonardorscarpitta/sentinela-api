@@ -12,7 +12,7 @@ rules:
     metadata:
       title: Documento do cidadão armazenado
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: low
+      sentinela-severity: low
       sentinela: { category: identification, type: mapping }
     patterns:
       - pattern-either:
@@ -44,7 +44,7 @@ rules:
     metadata:
       title: Dado de saúde armazenado
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: medium
+      sentinela-severity: medium
       sentinela: { category: health, type: mapping }
     patterns:
       - pattern-either:
@@ -76,7 +76,7 @@ rules:
     metadata:
       title: Senha armazenada
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: low
+      sentinela-severity: low
       sentinela: { category: credential, type: mapping }
     patterns:
       - pattern-either:
@@ -111,7 +111,7 @@ rules:
     metadata:
       title: Contato do cidadão armazenado
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: low
+      sentinela-severity: low
       sentinela: { category: contact, type: mapping }
     patterns:
       - pattern-either:
@@ -146,7 +146,7 @@ rules:
     metadata:
       title: Dado financeiro armazenado
       cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
-      artemis-severity: low
+      sentinela-severity: low
       sentinela: { category: financial, type: mapping }
     patterns:
       - pattern-either:

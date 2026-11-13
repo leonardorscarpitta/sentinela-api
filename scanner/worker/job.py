@@ -12,7 +12,7 @@ from .sanitize import safe_log
 from .scan import run_stage
 from .tools import MAX_FINDINGS
 
-log = logging.getLogger("artemis.runner")
+log = logging.getLogger("sentinela.runner")
 
 # Stack detection only reads manifests, so it gets a smaller clone than a scan (access checks are cheap to request).
 DETECT_TIMEOUT_SECONDS = 120
@@ -36,7 +36,7 @@ def process(job: dict, api: ApiClient, config: Config) -> None:
         src = work / "src"
         if repo.get("access") != "ssh":
             # Only repositories reached through their own deploy key are scanned (the key proves access was granted).
-            api.fail(run_id, "Only SSH repositories with an Artemis deploy key are scanned.")
+            api.fail(run_id, "Only SSH repositories with an Sentinela deploy key are scanned.")
             return
         ssh = None
         try:

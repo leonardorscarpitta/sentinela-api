@@ -3,7 +3,7 @@ rules:
     languages: [java]
     severity: ERROR
     message: SQL built by string concatenation. Use PreparedStatement parameters or named parameters in JPA/JDBC templates.
-    metadata: { title: SQL injection, cwe: "CWE-89: SQL Injection", artemis-severity: high }
+    metadata: { title: SQL injection, cwe: "CWE-89: SQL Injection", sentinela-severity: high }
     patterns:
       - pattern-either:
           - pattern: (java.sql.Statement $S).executeQuery("$SQL" + $X + ...)
@@ -21,7 +21,7 @@ rules:
     languages: [java]
     severity: ERROR
     message: Command execution with a concatenated string. Use ProcessBuilder with a fixed command and separate arguments.
-    metadata: { title: OS command injection, cwe: "CWE-78: OS Command Injection", artemis-severity: critical }
+    metadata: { title: OS command injection, cwe: "CWE-78: OS Command Injection", sentinela-severity: critical }
     pattern-either:
       - pattern: Runtime.getRuntime().exec($A + $B)
       - pattern: new ProcessBuilder("sh", "-c", $CMD)
@@ -31,7 +31,7 @@ rules:
     languages: [java]
     severity: ERROR
     message: Java native deserialization of untrusted data can lead to remote code execution. Prefer JSON or use an ObjectInputFilter.
-    metadata: { title: Insecure deserialization, cwe: "CWE-502: Deserialization of Untrusted Data", artemis-severity: high }
+    metadata: { title: Insecure deserialization, cwe: "CWE-502: Deserialization of Untrusted Data", sentinela-severity: high }
     pattern: new java.io.ObjectInputStream(...).readObject()
 
   - id: java-weak-hash
@@ -48,7 +48,7 @@ rules:
     languages: [java]
     severity: ERROR
     message: DES/3DES/RC4 or ECB mode are insecure. Use AES-GCM.
-    metadata: { title: Weak cipher, cwe: "CWE-327: Broken Cryptographic Algorithm", artemis-severity: high }
+    metadata: { title: Weak cipher, cwe: "CWE-327: Broken Cryptographic Algorithm", sentinela-severity: high }
     patterns:
       - pattern: javax.crypto.Cipher.getInstance("$ALG")
       - metavariable-regex:
@@ -66,7 +66,7 @@ rules:
     languages: [java]
     severity: ERROR
     message: A TrustManager/HostnameVerifier that accepts everything disables TLS verification.
-    metadata: { title: TLS verification disabled, cwe: "CWE-295: Improper Certificate Validation", artemis-severity: high }
+    metadata: { title: TLS verification disabled, cwe: "CWE-295: Improper Certificate Validation", sentinela-severity: high }
     pattern-either:
       - pattern: |
           public void checkServerTrusted(...) { }
