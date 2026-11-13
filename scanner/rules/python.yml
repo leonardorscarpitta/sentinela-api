@@ -3,7 +3,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: subprocess with shell=True and a non-literal command allows command injection. Pass an argument list without shell=True.
-    metadata: { title: OS command injection, cwe: "CWE-78: OS Command Injection", artemis-severity: critical }
+    metadata: { title: OS command injection, cwe: "CWE-78: OS Command Injection", sentinela-severity: critical }
     patterns:
       - pattern-either:
           - pattern: subprocess.$F($CMD, ..., shell=True, ...)
@@ -17,7 +17,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: eval/exec on dynamic input allows arbitrary code execution. Use ast.literal_eval or explicit parsing.
-    metadata: { title: Dynamic code execution, cwe: "CWE-95: Eval Injection", artemis-severity: high }
+    metadata: { title: Dynamic code execution, cwe: "CWE-95: Eval Injection", sentinela-severity: high }
     patterns:
       - pattern-either:
           - pattern: eval($X)
@@ -29,7 +29,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: SQL built with string formatting. Use parameterized queries (cursor.execute(sql, params)).
-    metadata: { title: SQL injection, cwe: "CWE-89: SQL Injection", artemis-severity: high }
+    metadata: { title: SQL injection, cwe: "CWE-89: SQL Injection", sentinela-severity: high }
     pattern-either:
       - pattern: $C.execute("..." % $X, ...)
       - pattern: $C.execute("...".format(...), ...)
@@ -40,7 +40,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: pickle/yaml.load on untrusted data can execute code. Use json or yaml.safe_load.
-    metadata: { title: Insecure deserialization, cwe: "CWE-502: Deserialization of Untrusted Data", artemis-severity: high }
+    metadata: { title: Insecure deserialization, cwe: "CWE-502: Deserialization of Untrusted Data", sentinela-severity: high }
     pattern-either:
       - pattern: pickle.loads(...)
       - pattern: pickle.load(...)
@@ -51,7 +51,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: TLS certificate verification disabled (verify=False).
-    metadata: { title: TLS verification disabled, cwe: "CWE-295: Improper Certificate Validation", artemis-severity: high }
+    metadata: { title: TLS verification disabled, cwe: "CWE-295: Improper Certificate Validation", sentinela-severity: high }
     pattern: requests.$M(..., verify=False, ...)
 
   - id: python-weak-hash-password
@@ -68,7 +68,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: Flask runs with debug=True. The Werkzeug debugger lets anyone who reaches it execute code on the server. Turn debug off outside local development.
-    metadata: { title: Flask debug mode enabled, cwe: "CWE-489: Active Debug Code", artemis-severity: high }
+    metadata: { title: Flask debug mode enabled, cwe: "CWE-489: Active Debug Code", sentinela-severity: high }
     pattern-either:
       - pattern: $APP.run(..., debug=True, ...)
       - pattern: $APP.debug = True
@@ -77,7 +77,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: render_template_string with a dynamic template allows server-side template injection. Render a template file and pass data as variables.
-    metadata: { title: Server-side template injection, cwe: "CWE-1336: Improper Neutralization of Special Elements Used in a Template Engine", artemis-severity: high }
+    metadata: { title: Server-side template injection, cwe: "CWE-1336: Improper Neutralization of Special Elements Used in a Template Engine", sentinela-severity: high }
     patterns:
       - pattern-either:
           - pattern: flask.render_template_string($T, ...)
@@ -89,7 +89,7 @@ rules:
     languages: [python]
     severity: WARNING
     message: The framework secret key is hard-coded. Anyone with the code can forge sessions and signed data. Load it from an environment variable or secret store.
-    metadata: { title: Hard-coded secret key, cwe: "CWE-798: Use of Hard-coded Credentials", artemis-severity: high }
+    metadata: { title: Hard-coded secret key, cwe: "CWE-798: Use of Hard-coded Credentials", sentinela-severity: high }
     pattern-either:
       - pattern: SECRET_KEY = "..."
       - pattern: $APP.secret_key = "..."
@@ -99,7 +99,7 @@ rules:
     languages: [python]
     severity: WARNING
     message: DEBUG = True in Django settings exposes stack traces, settings and SQL to visitors. Read it from the environment and keep it False in production.
-    metadata: { title: Django debug mode enabled, cwe: "CWE-489: Active Debug Code", artemis-severity: medium }
+    metadata: { title: Django debug mode enabled, cwe: "CWE-489: Active Debug Code", sentinela-severity: medium }
     paths:
       include: ["*settings*.py"]
     pattern: DEBUG = True
@@ -108,7 +108,7 @@ rules:
     languages: [python]
     severity: WARNING
     message: ALLOWED_HOSTS accepts any host, which enables Host header attacks (cache poisoning, password-reset link hijacking). List the real domain names.
-    metadata: { title: Django accepts any Host header, cwe: "CWE-183: Permissive List of Allowed Inputs", artemis-severity: medium }
+    metadata: { title: Django accepts any Host header, cwe: "CWE-183: Permissive List of Allowed Inputs", sentinela-severity: medium }
     paths:
       include: ["*settings*.py"]
     pattern: ALLOWED_HOSTS = [..., "*", ...]
@@ -117,7 +117,7 @@ rules:
     languages: [python]
     severity: WARNING
     message: mark_safe on dynamic content disables Django's auto-escaping and allows cross-site scripting. Escape the data or use format_html.
-    metadata: { title: Cross-site scripting via mark_safe, cwe: "CWE-79: Cross-site Scripting", artemis-severity: medium }
+    metadata: { title: Cross-site scripting via mark_safe, cwe: "CWE-79: Cross-site Scripting", sentinela-severity: medium }
     patterns:
       - pattern-either:
           - pattern: django.utils.safestring.mark_safe($X)
@@ -128,7 +128,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: Raw SQL built with string formatting allows SQL injection. Pass parameters separately (params=[...]) or use the ORM.
-    metadata: { title: SQL injection in Django raw query, cwe: "CWE-89: SQL Injection", artemis-severity: critical }
+    metadata: { title: SQL injection in Django raw query, cwe: "CWE-89: SQL Injection", sentinela-severity: critical }
     pattern-either:
       - pattern: $M.objects.raw(f"...", ...)
       - pattern: $M.objects.raw("..." % $X, ...)
@@ -140,5 +140,5 @@ rules:
     languages: [python]
     severity: ERROR
     message: CORS allows any origin together with credentials, so any website can make authenticated requests to this API. List the allowed origins explicitly.
-    metadata: { title: Permissive CORS with credentials, cwe: "CWE-942: Permissive Cross-domain Policy with Untrusted Domains", artemis-severity: high }
+    metadata: { title: Permissive CORS with credentials, cwe: "CWE-942: Permissive Cross-domain Policy with Untrusted Domains", sentinela-severity: high }
     pattern: $APP.add_middleware(CORSMiddleware, ..., allow_origins=["*"], ..., allow_credentials=True, ...)

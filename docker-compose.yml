@@ -71,11 +71,11 @@ services:
       - start
       - --import-realm
       - --http-enabled=true
-      - --hostname=${AUTH_PUBLIC_URL:-https://auth.artemisappsec.localhost:9443}
+      - --hostname=${AUTH_PUBLIC_URL:-https://auth.sentinela.localhost:9443}
       - --hostname-backchannel-dynamic=true
       - --proxy-headers=xforwarded
       - --health-enabled=true
-      # Dev only: reload the Artemis theme on every request while editing it.
+      # Dev only: reload the Sentinela theme on every request while editing it.
       - --spi-theme--cache-themes=false
       - --spi-theme--cache-templates=false
     environment:
@@ -87,14 +87,14 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       JAVA_OPTS_KC_HEAP: -XX:MaxRAMPercentage=60
       # Placeholders used by the realm import
-      ARTEMISAPPSEC_WEB_ORIGIN: ${ARTEMISAPPSEC_WEB_ORIGIN:-http://localhost:4200}
-      ARTEMISAPPSEC_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_API_CLIENT_SECRET:?set KEYCLOAK_ADMIN_API_CLIENT_SECRET in .env (openssl rand -hex 32)}
+      SENTINELA_WEB_ORIGIN: ${SENTINELA_WEB_ORIGIN:-http://localhost:4200}
+      SENTINELA_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_API_CLIENT_SECRET:?set KEYCLOAK_ADMIN_API_CLIENT_SECRET in .env (openssl rand -hex 32)}
       KC_SMTP_HOST: ${KC_SMTP_HOST:-mailpit}
       KC_SMTP_PORT: ${KC_SMTP_PORT:-1025}
-      KC_SMTP_FROM: ${KC_SMTP_FROM:-no-reply@artemisappsec.localhost}
+      KC_SMTP_FROM: ${KC_SMTP_FROM:-no-reply@sentinela.localhost}
     volumes:
-      - ./keycloak/realm-artemisappsec.json:/opt/keycloak/data/import/realm-artemisappsec.json:ro
-      - ./keycloak/themes/artemis:/opt/keycloak/themes/artemis:ro
+      - ./keycloak/realm-sentinela.json:/opt/keycloak/data/import/realm-sentinela.json:ro
+      - ./keycloak/themes/sentinela:/opt/keycloak/themes/sentinela:ro
     mem_limit: 768m
     depends_on:
       keycloak-db-init:
@@ -123,10 +123,10 @@ services:
   # capabilities, in-memory workspace wiped after each run, and no route to the database (scanner network only).
   scanner:
     build: ./scanner
-    image: artemisappsec/runner:dev
+    image: sentinela/runner:dev
     restart: unless-stopped
     environment:
-      ARTEMIS_API_URL: http://api-gateway:8080
+      SENTINELA_API_URL: http://api-gateway:8080
       SCANNER_TOKEN: ${SCANNER_TOKEN:-}
       SCANNER_RUN_TIMEOUT_SECONDS: ${SCANNER_RUN_TIMEOUT_SECONDS:-3600}
     read_only: true

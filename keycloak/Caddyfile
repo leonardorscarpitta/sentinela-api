@@ -4,6 +4,6 @@
 	local_certs
 }
 
-auth.artemisappsec.localhost:9443 {
+auth.sentinela.localhost:9443 {
 	reverse_proxy keycloak:8080
 }

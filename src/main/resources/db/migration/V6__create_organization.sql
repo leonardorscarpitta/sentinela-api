@@ -86,7 +86,7 @@ CREATE TABLE api_token_scope (
 -- Built-in organization so the platform works before anyone edits the settings.
 INSERT INTO organization_settings (id, name, slug, default_language, timezone, oidc_issuer, oidc_client_id,
     oidc_client_secret_set, session_timeout, enforce_sso, findings_retention, logs_retention, reports_retention, updated_at)
-VALUES (1, 'My organization', 'my-org', 'en-US', 'UTC', 'https://auth.example.com', 'artemis-web',
+VALUES (1, 'My organization', 'my-org', 'en-US', 'UTC', 'https://auth.example.com', 'sentinela-web',
     FALSE, 'EIGHT_HOURS', TRUE, 'DAYS_730', 'DAYS_90', 'FOREVER', NOW());
 
 INSERT INTO integration (id, name, short_code, category, status, removable, position, updated_at) VALUES

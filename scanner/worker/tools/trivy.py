@@ -132,7 +132,7 @@ def disable_remote_modules(src: Path) -> int:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        rewritten, count = _REMOTE_SOURCE.subn(r"\g<head>./.artemis-remote-module-not-fetched\g<tail>", text)
+        rewritten, count = _REMOTE_SOURCE.subn(r"\g<head>./.sentinela-remote-module-not-fetched\g<tail>", text)
         if count:
             path.write_text(rewritten, encoding="utf-8")
             changed += count

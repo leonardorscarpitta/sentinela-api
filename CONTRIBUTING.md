@@ -1,10 +1,10 @@
-# Contributing to Artemis
+# Contributing to Sentinela
 
 Thanks for your interest! Issues, ideas and pull requests are welcome.
 
 ## License of contributions
 
-Artemis is open source under the [MIT License](LICENSE). By submitting a contribution (a pull request, patch or any other material) you confirm that it is your own work, or that you otherwise have the right to submit it, and you agree that it is licensed under the same MIT License as the rest of the project.
+Sentinela is open source under the [MIT License](LICENSE). By submitting a contribution (a pull request, patch or any other material) you confirm that it is your own work, or that you otherwise have the right to submit it, and you agree that it is licensed under the same MIT License as the rest of the project.
 
 ## How to contribute
 

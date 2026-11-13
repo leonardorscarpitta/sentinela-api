@@ -5,7 +5,7 @@ rules:
     message: >-
       Dynamic code execution with eval/new Function. If any part of the input comes from users,
       this allows arbitrary code execution. Use safe parsing (JSON.parse) or explicit logic instead.
-    metadata: { title: Dynamic code execution, cwe: "CWE-95: Eval Injection", artemis-severity: high }
+    metadata: { title: Dynamic code execution, cwe: "CWE-95: Eval Injection", sentinela-severity: high }
     patterns:
       - pattern-either:
           - pattern: eval($X)
@@ -18,7 +18,7 @@ rules:
     message: >-
       Shell command built from variables. An attacker-controlled value can inject extra commands.
       Use execFile/spawn with an argument array and no shell.
-    metadata: { title: OS command injection, cwe: "CWE-78: OS Command Injection", artemis-severity: critical }
+    metadata: { title: OS command injection, cwe: "CWE-78: OS Command Injection", sentinela-severity: critical }
     pattern-either:
       - pattern: $CP.exec($A + $B, ...)
       - pattern: $CP.execSync($A + $B, ...)
@@ -32,7 +32,7 @@ rules:
     severity: ERROR
     message: >-
       SQL query built by string concatenation or interpolation. Use parameterized queries / prepared statements.
-    metadata: { title: SQL injection, cwe: "CWE-89: SQL Injection", artemis-severity: high }
+    metadata: { title: SQL injection, cwe: "CWE-89: SQL Injection", sentinela-severity: high }
     patterns:
       - pattern-either:
           - pattern: $DB.query("$SQL" + $X, ...)
@@ -82,7 +82,7 @@ rules:
     languages: [javascript, typescript]
     severity: ERROR
     message: TLS certificate verification is disabled, which allows man-in-the-middle attacks.
-    metadata: { title: TLS verification disabled, cwe: "CWE-295: Improper Certificate Validation", artemis-severity: high }
+    metadata: { title: TLS verification disabled, cwe: "CWE-295: Improper Certificate Validation", sentinela-severity: high }
     pattern-either:
       - pattern: |
           { ..., rejectUnauthorized: false, ... }
@@ -92,7 +92,7 @@ rules:
     languages: [javascript, typescript]
     severity: ERROR
     message: JWT signed or verified with a hardcoded secret. Load it from configuration/secret storage.
-    metadata: { title: Hardcoded JWT secret, cwe: "CWE-798: Use of Hard-coded Credentials", artemis-severity: high }
+    metadata: { title: Hardcoded JWT secret, cwe: "CWE-798: Use of Hard-coded Credentials", sentinela-severity: high }
     pattern-either:
       - pattern: $JWT.sign($P, "...", ...)
       - pattern: $JWT.verify($T, "...", ...)

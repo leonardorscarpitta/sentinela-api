@@ -5,7 +5,7 @@ import os
 import signal
 import subprocess
 
-log = logging.getLogger("artemis.runner")
+log = logging.getLogger("sentinela.runner")
 PR_SET_DUMPABLE = 4
 
 

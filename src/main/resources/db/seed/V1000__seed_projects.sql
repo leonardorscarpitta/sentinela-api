@@ -4,7 +4,7 @@ INSERT INTO organization (id, slug, name, created_at) VALUES ('00000000-0000-000
 
 INSERT INTO organization_settings (organization_id, default_language, timezone, oidc_issuer, oidc_client_id,
     oidc_client_secret_set, session_timeout, enforce_sso, findings_retention, logs_retention, reports_retention, updated_at)
-VALUES ('00000000-0000-0000-0009-000000000001', 'en-US', 'UTC', 'https://auth.example.com', 'artemisappsec-web',
+VALUES ('00000000-0000-0000-0009-000000000001', 'en-US', 'UTC', 'https://auth.example.com', 'sentinela-web',
     FALSE, 'EIGHT_HOURS', TRUE, 'DAYS_730', 'DAYS_90', 'FOREVER', NOW());
 
 INSERT INTO subscription (organization_id, plan, started_at) VALUES ('00000000-0000-0000-0009-000000000001', 'FREE', '2026-07-01T12:00:00Z');
