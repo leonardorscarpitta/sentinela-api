@@ -14,12 +14,6 @@
 	<name>sentinela</name>
 	<description>Sentinela SAST platform API</description>
 	<url>https://github.com/leonardorscarpitta/sentinela-api</url>
-	<licenses>
-		<license>
-			<name>MIT</name>
-			<url>https://opensource.org/license/mit</url>
-		</license>
-	</licenses>
 	<developers>
 		<developer>
 			<id>leonardorscarpitta</id>
