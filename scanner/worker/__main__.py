@@ -18,8 +18,8 @@ from .proc import harden, reap_orphans
 from .scan import run_stage
 
 log = logging.getLogger("artemis.runner")
-STAGE_ORDER = ["secrets", "sast", "sca", "license", "dockerfile", "image", "sbom", "iac", "dast"]
-DEFAULT_TOOLS = {"secrets": "Gitleaks", "sast": "Semgrep", "sca": "Trivy", "license": "Trivy", "dockerfile": "Hadolint",
+STAGE_ORDER = ["secrets", "sast", "pii", "sca", "license", "dockerfile", "image", "sbom", "iac", "dast"]
+DEFAULT_TOOLS = {"secrets": "Gitleaks", "sast": "Semgrep", "pii": "Semgrep", "sca": "Trivy", "license": "Trivy", "dockerfile": "Hadolint",
                  "image": "Trivy", "sbom": "Syft", "iac": "Trivy", "dast": "OWASP ZAP"}
 HEARTBEAT_MAX_AGE = 300
 

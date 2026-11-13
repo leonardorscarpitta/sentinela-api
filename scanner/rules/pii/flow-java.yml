@@ -1,0 +1,550 @@
+# Sentinela Cidadã — taint rules (Java / Spring): personal data that reaches an insecure output.
+# One rule per (category, sink), so the rule id says what leaks and where:
+#   pii-flow-<category>-<sink>   category: identification | health | credential | contact | financial
+#                                 sink:     log | http-response | external-api | file | exception
+# Sources: getters/record accessors and Spring request parameters whose names carry personal data.
+# Sanitizers: PiiMasker.*, mask*/hash*/anonymize*/redact*/encrypt* calls (masked values are not reported).
+# Sources, sinks and sanitizers are defined once (YAML anchors in the first rules) and reused below.
+rules:
+  # ---------------------------------------------------------------- identification
+  - id: pii-flow-identification-log
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      Um documento de identificação do cidadão (CPF, RG, CNS…) é gravado em log sem máscara. Logs são lidos por
+      equipes, ferramentas e fornecedores e guardados por muito tempo. Mascare o valor (PiiMasker) ou não o registre.
+    metadata:
+      title: Documento do cidadão gravado em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      artemis-severity: high
+      sentinela: { category: identification, type: flow, sink: log }
+    pattern-sources: &java-src-identification
+      - patterns:
+          - pattern-either:
+              - pattern: $OBJ.$GETTER()
+              - pattern: $GETTER()
+          - metavariable-regex:
+              metavariable: $GETTER
+              regex: ^(get\w*?(Cpf|CPF|Rg|RG|Cns|CNS|Cnh|CNH|Nis|NIS|Pis|PIS|Passaporte|CartaoSus|TituloEleitor|DataNascimento|NomeMae)([A-Z0-9]\w*)?|cpf|rg|cns|cnh|nis|pis|passaporte|cartaoSus|tituloEleitor|dataNascimento|nomeMae)$
+      - patterns:
+          - pattern-inside: $RET $METHOD(..., @$ANN(...) $TYPE $PARAM, ...) { ... }
+          - pattern: $PARAM
+          - metavariable-regex: { metavariable: $ANN, regex: '^(RequestParam|PathVariable|RequestHeader)$' }
+          - metavariable-regex:
+              metavariable: $PARAM
+              regex: (^|_)(cpf|rg|cns|cnh|nis|pis|passaporte|cartaoSus|cartao_sus|tituloEleitor|titulo_eleitor|dataNascimento|data_nascimento|nomeMae|nome_mae|CPF|RG|CNS|CNH|NIS|PIS)($|_|[A-Z0-9])|[a-z0-9](Cpf|Rg|Cns|Cnh|Nis|Pis|Passaporte|CartaoSus|TituloEleitor|DataNascimento|NomeMae|CPF|RG|CNS|CNH|NIS|PIS)($|_|[A-Z0-9])
+    pattern-sanitizers: &java-sanitizers
+      - pattern: PiiMasker.$ANY(...)
+      - patterns:
+          - pattern-either:
+              - pattern: $SAN(...)
+              - pattern: $RECV.$SAN(...)
+          - metavariable-regex:
+              metavariable: $SAN
+              regex: ^(mask|mascarar|hash(?!Code$)|anonymi[sz]e|anonimizar|pseudonymi[sz]e|redact|encrypt|criptografar)\w*$
+    pattern-sinks: &java-sink-log
+      - patterns:
+          - pattern: $LOGGER.$LEVEL(...)
+          - metavariable-regex: { metavariable: $LOGGER, regex: '^(log|logger|LOG|LOGGER|_log|_logger|auditLog|AUDIT)$' }
+          - metavariable-regex: { metavariable: $LEVEL, regex: '^(trace|debug|info|warn|error|fatal|log)$' }
+      - pattern: System.out.$PRINT(...)
+      - pattern: System.err.$PRINT(...)
+
+  - id: pii-flow-identification-http-response
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      Um documento de identificação do cidadão é devolvido na resposta HTTP sem máscara. Qualquer cliente da API (ou
+      quem intercepte a resposta) passa a ter o dado. Devolva apenas o necessário, mascarado.
+    metadata:
+      title: Documento do cidadão exposto na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      artemis-severity: high
+      sentinela: { category: identification, type: flow, sink: httpResponse }
+    pattern-sources: *java-src-identification
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: &java-sink-http-response
+      - pattern: ResponseEntity.ok(...)
+      - pattern: ResponseEntity.$STATUS(...).body(...)
+      - pattern: new ResponseEntity<$T>(...)
+      - pattern: new ResponseEntity<>(...)
+      - pattern: new ResponseEntity(...)
+      - pattern: $RESPONSE.getWriter().$WRITE(...)
+      - pattern: $RESPONSE.getOutputStream().write(...)
+
+  - id: pii-flow-identification-external-api
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      Um documento de identificação do cidadão é enviado a um serviço externo. Compartilhar dados pessoais com
+      terceiros exige base legal (LGPD art. 7º) e transporte seguro; envie só o necessário, anonimizado.
+    metadata:
+      title: Documento do cidadão enviado a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      artemis-severity: high
+      sentinela: { category: identification, type: flow, sink: externalApi }
+    pattern-sources: *java-src-identification
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: &java-sink-external-api
+      - patterns:
+          - pattern: (RestTemplate $CLIENT).$CALL(...)
+          - metavariable-regex: { metavariable: $CALL, regex: '^(postForObject|postForEntity|postForLocation|put|patchForObject|exchange|getForObject|getForEntity)$' }
+      - pattern: $SPEC.bodyValue(...)
+      - pattern: $SPEC.body(...).retrieve()
+      - pattern: HttpRequest.BodyPublishers.ofString(...)
+      - pattern: (HttpClient $CLIENT).send(...)
+
+  - id: pii-flow-identification-file
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      Um documento de identificação do cidadão é gravado em arquivo sem proteção (ex.: /tmp ou exportações). Arquivos
+      soltos escapam do controle de acesso e da retenção. Use armazenamento protegido e criptografado.
+    metadata:
+      title: Documento do cidadão gravado em arquivo
+      cwe: "CWE-312: Cleartext Storage of Sensitive Information"
+      artemis-severity: high
+      sentinela: { category: identification, type: flow, sink: file }
+    pattern-sources: *java-src-identification
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: &java-sink-file
+      - pattern: Files.write(...)
+      - pattern: Files.writeString(...)
+      - pattern: (FileWriter $WRITER).$WRITE(...)
+      - pattern: (BufferedWriter $WRITER).$WRITE(...)
+      - pattern: (FileOutputStream $OUT).write(...)
+      - pattern: new FileWriter(...).write(...)
+
+  - id: pii-flow-identification-exception
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      Um documento de identificação do cidadão vai para a mensagem de uma exceção. Mensagens de erro acabam em logs,
+      monitoramento e às vezes na resposta ao cliente. Descreva o erro sem o dado pessoal.
+    metadata:
+      title: Documento do cidadão em mensagem de erro
+      cwe: "CWE-209: Generation of Error Message Containing Sensitive Information"
+      artemis-severity: high
+      sentinela: { category: identification, type: flow, sink: exception }
+    pattern-sources: *java-src-identification
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: &java-sink-exception
+      - pattern: throw new $EXCEPTION(...);
+
+  # ---------------------------------------------------------------- health (dado sensível, LGPD art. 11)
+  - id: pii-flow-health-log
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      Dados de saúde do cidadão (CID-10, sintomas, diagnóstico, CNS…) são gravados em log. Dado de saúde é dado
+      sensível pela LGPD (art. 11): não registre, ou anonimize antes.
+    metadata:
+      title: Dado de saúde gravado em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      artemis-severity: high
+      sentinela: { category: health, type: flow, sink: log }
+    pattern-sources: &java-src-health
+      - patterns:
+          - pattern-either:
+              - pattern: $OBJ.$GETTER()
+              - pattern: $GETTER()
+          - metavariable-regex:
+              metavariable: $GETTER
+              regex: ^(get\w*?(Cid|CID|Diagnostico|Diagnosticos|Diagnosis|Sintoma|Sintomas|Symptom|Symptoms|Laudo|Laudos|Prontuario|Alergia|Alergias|Comorbidade|Comorbidades|Medicamento|Medicamentos|Doenca|Doencas|Exame|Exames|Deficiencia|Gestacao|Hiv|HIV)([A-Z0-9]\w*)?|cid|cid10|diagnostico|diagnosis|sintomas|symptoms|laudo|prontuario|alergias|comorbidades|medicamentos|doenca|exame|deficiencia)$
+      - patterns:
+          - pattern-inside: $RET $METHOD(..., @$ANN(...) $TYPE $PARAM, ...) { ... }
+          - pattern: $PARAM
+          - metavariable-regex: { metavariable: $ANN, regex: '^(RequestParam|PathVariable|RequestHeader)$' }
+          - metavariable-regex:
+              metavariable: $PARAM
+              regex: (^|_)(cid|cid10|diagnostico|diagnosticos|diagnosis|sintoma|sintomas|symptom|symptoms|laudo|laudos|prontuario|alergia|alergias|comorbidade|comorbidades|medicamento|medicamentos|doenca|doencas|exame|exames|deficiencia|gestacao|hiv|CID|CID10|HIV)($|_|[A-Z0-9])|[a-z0-9](Cid|Diagnostico|Diagnosticos|Diagnosis|Sintoma|Sintomas|Symptom|Symptoms|Laudo|Laudos|Prontuario|Alergia|Alergias|Comorbidade|Comorbidades|Medicamento|Medicamentos|Doenca|Doencas|Exame|Exames|Deficiencia|Gestacao|Hiv|CID|HIV)($|_|[A-Z0-9])
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-log
+
+  - id: pii-flow-health-http-response
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      Dados de saúde do cidadão são devolvidos na resposta HTTP. Dado sensível (LGPD art. 11) só deve chegar a quem
+      precisa dele; devolva apenas o necessário para a tela, para usuários autorizados.
+    metadata:
+      title: Dado de saúde exposto na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      artemis-severity: critical
+      sentinela: { category: health, type: flow, sink: httpResponse }
+    pattern-sources: *java-src-health
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-http-response
+
+  - id: pii-flow-health-external-api
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      Dados de saúde do cidadão (CID-10, sintomas…) são enviados a um serviço externo. Compartilhar dado sensível de
+      saúde com terceiros é vedado salvo hipóteses do art. 11 da LGPD; envie apenas dados agregados e anonimizados,
+      sempre por HTTPS.
+    metadata:
+      title: Dado de saúde enviado a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      artemis-severity: critical
+      sentinela: { category: health, type: flow, sink: externalApi }
+    pattern-sources: *java-src-health
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-external-api
+
+  - id: pii-flow-health-file
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      Dados de saúde do cidadão são gravados em arquivo sem proteção. Arquivos temporários e exportações escapam do
+      controle de acesso; use armazenamento criptografado com acesso restrito.
+    metadata:
+      title: Dado de saúde gravado em arquivo
+      cwe: "CWE-312: Cleartext Storage of Sensitive Information"
+      artemis-severity: high
+      sentinela: { category: health, type: flow, sink: file }
+    pattern-sources: *java-src-health
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-file
+
+  - id: pii-flow-health-exception
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      Dados de saúde do cidadão vão para a mensagem de uma exceção, que acaba em logs e telas de erro. Descreva o erro
+      sem o dado de saúde.
+    metadata:
+      title: Dado de saúde em mensagem de erro
+      cwe: "CWE-209: Generation of Error Message Containing Sensitive Information"
+      artemis-severity: high
+      sentinela: { category: health, type: flow, sink: exception }
+    pattern-sources: *java-src-health
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-exception
+
+  # ---------------------------------------------------------------- credential
+  - id: pii-flow-credential-log
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      A senha do cidadão é gravada em log. Quem lê os logs pode entrar na conta dele (e em outros serviços, se ele
+      repetir a senha). Nunca registre senhas.
+    metadata:
+      title: Senha do cidadão gravada em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      artemis-severity: critical
+      sentinela: { category: credential, type: flow, sink: log }
+    pattern-sources: &java-src-credential
+      - patterns:
+          - pattern-either:
+              - pattern: $OBJ.$GETTER()
+              - pattern: $GETTER()
+          - metavariable-regex:
+              metavariable: $GETTER
+              regex: ^(get\w*?(Senha|SENHA|Password|PASSWORD|Passwd|Pwd|Pin|PIN)([A-Z0-9]\w*)?|senha|password|passwd|pwd|pin)$
+          - metavariable-regex:
+              metavariable: $GETTER
+              regex: (?i)^(?!.*(encoder|policy|reset|hint|length|expir|strength|validator|pattern|regex|field|label|param|attempt|changed|updated|required|enabled))
+      - patterns:
+          - pattern-inside: $RET $METHOD(..., @$ANN(...) $TYPE $PARAM, ...) { ... }
+          - pattern: $PARAM
+          - metavariable-regex: { metavariable: $ANN, regex: '^(RequestParam|PathVariable|RequestHeader)$' }
+          - metavariable-regex:
+              metavariable: $PARAM
+              regex: (^|_)(senha|password|passwd|pwd|pin|SENHA|PASSWORD|PASSWD|PWD|PIN)($|_|[A-Z0-9])|[a-z0-9](Senha|Password|Passwd|Pwd|Pin|SENHA|PASSWORD|PIN)($|_|[A-Z0-9])
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-log
+
+  - id: pii-flow-credential-http-response
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      A senha (ou o hash dela) é devolvida na resposta HTTP. Senhas nunca devem sair do servidor; remova o campo da
+      resposta.
+    metadata:
+      title: Senha exposta na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      artemis-severity: critical
+      sentinela: { category: credential, type: flow, sink: httpResponse }
+    pattern-sources: *java-src-credential
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-http-response
+
+  - id: pii-flow-credential-external-api
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      A senha do cidadão é enviada a um serviço externo. Senhas não devem ser compartilhadas; use tokens próprios da
+      integração.
+    metadata:
+      title: Senha enviada a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      artemis-severity: critical
+      sentinela: { category: credential, type: flow, sink: externalApi }
+    pattern-sources: *java-src-credential
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-external-api
+
+  - id: pii-flow-credential-file
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: A senha do cidadão é gravada em arquivo em texto claro. Guarde apenas o hash (bcrypt/argon2) no banco.
+    metadata:
+      title: Senha gravada em arquivo
+      cwe: "CWE-312: Cleartext Storage of Sensitive Information"
+      artemis-severity: high
+      sentinela: { category: credential, type: flow, sink: file }
+    pattern-sources: *java-src-credential
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-file
+
+  - id: pii-flow-credential-exception
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: A senha do cidadão vai para a mensagem de uma exceção, que acaba em logs. Nunca inclua senhas em erros.
+    metadata:
+      title: Senha em mensagem de erro
+      cwe: "CWE-209: Generation of Error Message Containing Sensitive Information"
+      artemis-severity: high
+      sentinela: { category: credential, type: flow, sink: exception }
+    pattern-sources: *java-src-credential
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-exception
+
+  # Account-like entities (which carry the password hash and every personal field) returned as they are.
+  - id: pii-flow-credential-entity-response
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      A entidade de cadastro inteira (com senha, documentos e contatos) é devolvida na resposta HTTP. Todo campo novo
+      da entidade vaza automaticamente. Devolva um DTO só com os campos que a tela precisa.
+    metadata:
+      title: Cadastro completo (com senha) exposto na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      artemis-severity: critical
+      sentinela: { category: credential, type: flow, sink: httpResponse }
+    pattern-sources:
+      - patterns:
+          - pattern: ($ENTITY $VALUE)
+          - metavariable-regex:
+              metavariable: $ENTITY
+              regex: ^(Usuario|User|AppUser|UserAccount|Cidadao|Citizen|Paciente|Patient|Pessoa|Person|Cliente|Customer|Morador|Conta|Account|Membro|Member)$
+    pattern-sanitizers:
+      # Reading one field (a getter) or mapping to a DTO is what the fix looks like: not the whole entity.
+      - patterns:
+          - pattern: $VALUE.$GETTER()
+          - metavariable-regex: { metavariable: $GETTER, regex: "^(get|is|to)[A-Z]\\w*$" }
+      - patterns:
+          - pattern: new $DTO(...)
+          - metavariable-regex: { metavariable: $DTO, regex: '(Dto|DTO|Response|View|Resumo|Summary|Resource)$' }
+      - patterns:
+          - pattern: $MAPPER.$MAP(...)
+          - metavariable-regex: { metavariable: $MAP, regex: "^(to|from|map)([A-Z]\\w*)?$" }
+    pattern-sinks:
+      - pattern: ResponseEntity.ok(...)
+      - pattern: ResponseEntity.$STATUS(...).body(...)
+      - pattern: new ResponseEntity<$T>(...)
+      - pattern: new ResponseEntity<>(...)
+
+  # ---------------------------------------------------------------- contact
+  - id: pii-flow-contact-log
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      Um contato do cidadão (telefone, e-mail, endereço) é gravado em log sem máscara. Isso facilita golpes e
+      assédio se os logs vazarem. Mascare ou não registre.
+    metadata:
+      title: Contato do cidadão gravado em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      artemis-severity: high
+      sentinela: { category: contact, type: flow, sink: log }
+    pattern-sources: &java-src-contact
+      - patterns:
+          - pattern-either:
+              - pattern: $OBJ.$GETTER()
+              - pattern: $GETTER()
+          - metavariable-regex:
+              metavariable: $GETTER
+              regex: ^(get\w*?(Telefone|Celular|Phone|Email|EMail|Endereco|Cep|CEP|Whatsapp|Logradouro)([A-Z0-9]\w*)?|telefone|celular|phone|email|endereco|cep|whatsapp)$
+          - metavariable-regex:
+              metavariable: $GETTER
+              regex: (?i)^(?!.*(template|subject|body|sender|remetente|host|server|port|pattern|regex|enabled|verified|service|config|validator|url|type|tipo))
+      - patterns:
+          - pattern-inside: $RET $METHOD(..., @$ANN(...) $TYPE $PARAM, ...) { ... }
+          - pattern: $PARAM
+          - metavariable-regex: { metavariable: $ANN, regex: '^(RequestParam|PathVariable|RequestHeader)$' }
+          - metavariable-regex:
+              metavariable: $PARAM
+              regex: (^|_)(telefone|celular|phone|email|e_mail|endereco|cep|whatsapp|logradouro|TELEFONE|PHONE|EMAIL|CEP)($|_|[A-Z0-9])|[a-z0-9](Telefone|Celular|Phone|Email|EMail|Endereco|Cep|Whatsapp|Logradouro|EMAIL|CEP)($|_|[A-Z0-9])
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-log
+
+  - id: pii-flow-contact-http-response
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: Um contato do cidadão é devolvido na resposta HTTP. Devolva apenas a quem é dono do dado, ou mascarado.
+    metadata:
+      title: Contato do cidadão exposto na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      artemis-severity: high
+      sentinela: { category: contact, type: flow, sink: httpResponse }
+    pattern-sources: *java-src-contact
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-http-response
+
+  - id: pii-flow-contact-external-api
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      Um contato do cidadão é enviado a um serviço externo. Confirme a base legal e o contrato com o parceiro e envie
+      só o necessário.
+    metadata:
+      title: Contato do cidadão enviado a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      artemis-severity: high
+      sentinela: { category: contact, type: flow, sink: externalApi }
+    pattern-sources: *java-src-contact
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-external-api
+
+  - id: pii-flow-contact-file
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: Um contato do cidadão é gravado em arquivo sem proteção. Use armazenamento com acesso restrito.
+    metadata:
+      title: Contato do cidadão gravado em arquivo
+      cwe: "CWE-312: Cleartext Storage of Sensitive Information"
+      artemis-severity: high
+      sentinela: { category: contact, type: flow, sink: file }
+    pattern-sources: *java-src-contact
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-file
+
+  - id: pii-flow-contact-exception
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      Um contato do cidadão (telefone, e-mail…) vai para a mensagem de uma exceção, que acaba em logs e telas de erro.
+      Descreva o erro sem o dado.
+    metadata:
+      title: Contato do cidadão em mensagem de erro
+      cwe: "CWE-209: Generation of Error Message Containing Sensitive Information"
+      artemis-severity: high
+      sentinela: { category: contact, type: flow, sink: exception }
+    pattern-sources: *java-src-contact
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-exception
+
+  # ---------------------------------------------------------------- financial
+  - id: pii-flow-financial-log
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: Dados financeiros do cidadão (cartão, conta, PIX, renda) são gravados em log. Não registre; mascare.
+    metadata:
+      title: Dado financeiro gravado em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      artemis-severity: high
+      sentinela: { category: financial, type: flow, sink: log }
+    pattern-sources: &java-src-financial
+      - patterns:
+          - pattern-either:
+              - pattern: $OBJ.$GETTER()
+              - pattern: $GETTER()
+          - metavariable-regex:
+              metavariable: $GETTER
+              regex: ^(get\w*?(Cartao|CardNumber|CreditCard|Cvv|CVV|Cvc|CVC|Iban|IBAN|ContaBancaria|ChavePix|Renda|Salario)([A-Z0-9]\w*)?|cartao|cardNumber|cvv|cvc|iban|contaBancaria|chavePix|renda|salario)$
+          - metavariable-regex:
+              metavariable: $GETTER
+              regex: ^(?!.*(Sus|SUS|_sus))
+      - patterns:
+          - pattern-inside: $RET $METHOD(..., @$ANN(...) $TYPE $PARAM, ...) { ... }
+          - pattern: $PARAM
+          - metavariable-regex: { metavariable: $ANN, regex: '^(RequestParam|PathVariable|RequestHeader)$' }
+          - metavariable-regex:
+              metavariable: $PARAM
+              regex: (^|_)(cartao|cardNumber|card_number|creditCard|credit_card|cvv|cvc|iban|contaBancaria|conta_bancaria|chavePix|chave_pix|renda|salario|CVV|CVC|IBAN|PAN)($|_|[A-Z0-9])|[a-z0-9](Cartao|CardNumber|CreditCard|Cvv|Cvc|Iban|ContaBancaria|ChavePix|Renda|Salario|CVV|IBAN)($|_|[A-Z0-9])
+          - metavariable-regex:
+              metavariable: $PARAM
+              regex: ^(?!.*(Sus|SUS|_sus))
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-log
+
+  - id: pii-flow-financial-http-response
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: Dados financeiros do cidadão são devolvidos na resposta HTTP. Mostre no máximo os 4 últimos dígitos.
+    metadata:
+      title: Dado financeiro exposto na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      artemis-severity: critical
+      sentinela: { category: financial, type: flow, sink: httpResponse }
+    pattern-sources: *java-src-financial
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-http-response
+
+  - id: pii-flow-financial-external-api
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: >-
+      Dados financeiros do cidadão são enviados a um serviço externo. Use o tokenizador do provedor de pagamento em
+      vez de trafegar o dado bruto.
+    metadata:
+      title: Dado financeiro enviado a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      artemis-severity: critical
+      sentinela: { category: financial, type: flow, sink: externalApi }
+    pattern-sources: *java-src-financial
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-external-api
+
+  - id: pii-flow-financial-file
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: Dados financeiros do cidadão são gravados em arquivo sem proteção. Use armazenamento criptografado.
+    metadata:
+      title: Dado financeiro gravado em arquivo
+      cwe: "CWE-312: Cleartext Storage of Sensitive Information"
+      artemis-severity: high
+      sentinela: { category: financial, type: flow, sink: file }
+    pattern-sources: *java-src-financial
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-file
+
+  - id: pii-flow-financial-exception
+    languages: [java]
+    severity: ERROR
+    mode: taint
+    message: Dados financeiros do cidadão vão para a mensagem de uma exceção. Descreva o erro sem o dado.
+    metadata:
+      title: Dado financeiro em mensagem de erro
+      cwe: "CWE-209: Generation of Error Message Containing Sensitive Information"
+      artemis-severity: high
+      sentinela: { category: financial, type: flow, sink: exception }
+    pattern-sources: *java-src-financial
+    pattern-sanitizers: *java-sanitizers
+    pattern-sinks: *java-sink-exception
