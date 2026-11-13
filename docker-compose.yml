@@ -148,8 +148,8 @@ services:
     depends_on:
       - api-gateway
 
-  # The scanner reaches the API only through this proxy (port 8080), never the API container (JDWP 5005 has no auth).
-  # No network alias "api" here: the gateway would resolve itself.
+  # The scanner and the sentinela-web dev server reach the API only through this proxy (port 8080), never the API
+  # container (JDWP 5005 has no auth). No network alias "api" here: the gateway would resolve itself.
   api-gateway:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -158,12 +158,16 @@ services:
     networks:
       - default
       - scanner
+      - web
     depends_on:
       - api
 
 networks:
   # Shared only by the scanner and api-gateway; the API, database and Keycloak stay on the default network.
   scanner: {}
+  # Joined by the sentinela-web dev container (external network there); it only sees api-gateway.
+  web:
+    name: sentinela-web-gateway
 
 volumes:
   db_data:
