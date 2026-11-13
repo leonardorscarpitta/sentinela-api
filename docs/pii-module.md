@@ -132,8 +132,7 @@ Answer validation: every field required, plain text (control characters and mark
 300 / 450 / 300 characters; otherwise `502 ai-failed` and nothing is cached. `severity` is the finding's (not the AI's).
 
 Data sent to Claude (built only in `CitizenAlertPayload`): `lang`, `ruleId`, `category`, `type`, `sink`, `severity`,
-`cwe`, the rule's title and the repository stack. Never code, paths, lines, values, names or e-mails. The system
-instruction is recorded in `prompts.md`.
+`cwe`, the rule's title and the repository stack. Never code, paths, lines, values, names or e-mails.
 
 ## 5. Unchanged API the frontend also uses
 

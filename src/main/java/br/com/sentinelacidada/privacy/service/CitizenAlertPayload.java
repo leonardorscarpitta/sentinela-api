@@ -16,7 +16,7 @@ import br.com.sentinelacidada.shared.ai.ClaudeClient;
  * The only data Sentinela Cidadã sends to the AI provider to write a citizen alert: the language, the rule id, the
  * personal-data category, mapping/flow, the insecure output, severity, CWE, the rule's own title and the repository
  * stack. Never source code, file paths or lines, matched values, names, e-mails, repository or organization names.
- * Keep it that way: README "Citizen alerts" and prompts.md describe exactly this.
+ * Keep it that way: README "Citizen alerts" describes exactly this.
  */
 final class CitizenAlertPayload {
 
