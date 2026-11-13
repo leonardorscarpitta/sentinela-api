@@ -12,6 +12,7 @@ public class AiUsageCounter {
 
 	public static final String INSIGHT = "insight";
 	public static final String REPORT = "report";
+	public static final String CITIZEN_ALERT = "citizenAlert";
 
 	private final JdbcClient jdbc;
 

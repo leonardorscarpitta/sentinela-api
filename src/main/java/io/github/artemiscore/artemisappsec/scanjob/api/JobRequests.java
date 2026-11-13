@@ -5,7 +5,12 @@ import java.util.List;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.github.artemiscore.artemisappsec.finding.domain.FindingKind;
+import io.github.artemiscore.artemisappsec.finding.domain.PrivacyCategory;
+import io.github.artemiscore.artemisappsec.finding.domain.PrivacySink;
+import io.github.artemiscore.artemisappsec.finding.domain.PrivacyType;
+import io.github.artemiscore.artemisappsec.finding.domain.TraceStep;
 import io.github.artemiscore.artemisappsec.finding.service.DetectedIssue;
+import io.github.artemiscore.artemisappsec.finding.service.Privacy;
 import io.github.artemiscore.artemisappsec.pipelinerun.domain.StageOutcome;
 import io.github.artemiscore.artemisappsec.pipelinerun.domain.StageStatus;
 import io.github.artemiscore.artemisappsec.shared.domain.Severity;
@@ -63,14 +68,33 @@ final class JobRequests {
 			@DecimalMin("0.0") @DecimalMax("10.0") Double cvssScore,
 			@Size(max = 256) @Pattern(regexp = "^CVSS:[0-9.]+/[A-Za-z0-9:/.]+$") String cvssVector,
 			@Pattern(regexp = "^CWE-\\d{1,6}$") String cwe,
-			@JsonProperty("package") @Valid PackageRef packageRef, @Valid LocationRef location) {
+			@JsonProperty("package") @Valid PackageRef packageRef, @Valid LocationRef location,
+			@Valid PrivacyRef privacy) {
 
 		DetectedIssue toIssue() {
 			return new DetectedIssue(kind, ruleId, title, description, severity, cve, cvssScore, cvssVector, cwe,
 					packageRef == null ? null : packageRef.name(), packageRef == null ? null : packageRef.version(),
 					packageRef == null ? null : packageRef.fixedVersion(), packageRef == null ? null : packageRef.ecosystem(),
-					location == null ? null : location.path(), location == null ? null : location.line());
+					location == null ? null : location.path(), location == null ? null : location.line(),
+					privacy == null ? null : privacy.toPrivacy());
 		}
+	}
+
+	/** Privacy details: locations only (the runner never sends code or matched values). */
+	record PrivacyRef(@NotNull PrivacyCategory category, @NotNull PrivacyType type, PrivacySink sink,
+			@Size(max = 50) List<@NotNull @Valid TraceStepRef> trace) {
+
+		Privacy toPrivacy() {
+			List<TraceStep> steps = trace == null ? List.of()
+					: trace.stream().map(s -> new TraceStep(s.role(), s.path(), s.line())).toList();
+			return new Privacy(category, type, sink, steps);
+		}
+	}
+
+	record TraceStepRef(@NotNull @Pattern(regexp = "^(source|propagation|sink)$") String role,
+			@NotBlank @Size(max = 2048) @Pattern(regexp = "^(?!/)(?!.*(^|/)\\.\\.(/|$)).*$",
+					message = "must be a relative path inside the repository") String path,
+			@Min(0) Integer line) {
 	}
 
 	record PackageRef(@NotBlank @Size(max = 500) String name, @NotBlank @Size(max = 200) String version,

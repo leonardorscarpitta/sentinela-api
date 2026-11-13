@@ -20,7 +20,7 @@ import io.github.artemiscore.artemisappsec.shared.domain.Stage;
 class PolicyProvisioning {
 
 	private static final Map<Stage, FailThreshold> DEFAULT_GATES = Map.of(Stage.SECRETS, FailThreshold.LOW, Stage.SAST,
-			FailThreshold.HIGH, Stage.SCA, FailThreshold.CRITICAL, Stage.LICENSE, FailThreshold.NEVER, Stage.DOCKERFILE,
+			FailThreshold.HIGH, Stage.PII, FailThreshold.HIGH, Stage.SCA, FailThreshold.CRITICAL, Stage.LICENSE, FailThreshold.NEVER, Stage.DOCKERFILE,
 			FailThreshold.HIGH, Stage.IMAGE, FailThreshold.CRITICAL, Stage.IAC, FailThreshold.HIGH, Stage.DAST,
 			FailThreshold.HIGH);
 

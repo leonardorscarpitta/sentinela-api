@@ -8,6 +8,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum Stage {
 	SECRETS(Phase.SOURCE, List.of("Gitleaks"), true, FailThreshold.LOW, 1, true),
 	SAST(Phase.SOURCE, List.of("Semgrep"), true, FailThreshold.HIGH, 4, true),
+	// Sentinela Cidadã: personal-data mapping and leak flows (Semgrep with the rules in scanner/rules/pii).
+	PII(Phase.SOURCE, List.of("Semgrep"), true, FailThreshold.HIGH, 2, true),
 	SCA(Phase.SOURCE, List.of("Trivy", "Grype"), true, FailThreshold.CRITICAL, 2, true),
 	LICENSE(Phase.SOURCE, List.of("Trivy"), false, FailThreshold.NEVER, 1, true),
 	DOCKERFILE(Phase.BUILD, List.of("Hadolint", "Trivy"), true, FailThreshold.HIGH, 1, true),
