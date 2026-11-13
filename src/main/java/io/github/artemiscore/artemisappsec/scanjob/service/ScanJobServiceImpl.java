@@ -12,7 +12,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.github.artemiscore.artemisappsec.project.service.StackDetection;
+import io.github.artemiscore.artemisappsec.finding.domain.TraceStep;
 import io.github.artemiscore.artemisappsec.finding.service.DetectedIssue;
+import io.github.artemiscore.artemisappsec.finding.service.Privacy;
 import io.github.artemiscore.artemisappsec.finding.service.FindingService;
 import io.github.artemiscore.artemisappsec.finding.service.IngestionResult;
 import io.github.artemiscore.artemisappsec.pipelinerun.domain.RunStatus;
@@ -42,6 +44,7 @@ class ScanJobServiceImpl implements ScanJobService {
 	private static final int MAX_MESSAGE_CHARS = 500;
 	private static final int MAX_REASON_CHARS = 500;
 	private static final int MAX_CLAIM_ATTEMPTS = 20;
+	private static final int MAX_TRACE_STEPS = 20;
 	private static final String NO_DEPLOY_KEY = "No deploy key: open the repository's Deploy Key tab to set one up";
 
 	private final PipelineRunService runs;
@@ -247,6 +250,17 @@ class ScanJobServiceImpl implements ScanJobService {
 				Text.clean(i.description(), 2000), i.severity(), Text.clean(i.cve(), 32), i.cvssScore(),
 				Text.clean(i.cvssVector(), 128), Text.clean(i.cwe(), 16), Text.clean(i.packageName(), 255),
 				Text.clean(i.packageVersion(), 64), Text.clean(i.fixedVersion(), 64), Text.clean(i.ecosystem(), 32),
-				Text.clean(i.locationPath(), 1024), i.locationLine());
+				Text.clean(i.locationPath(), 1024), i.locationLine(), sanitize(i.privacy()));
+	}
+
+	private static Privacy sanitize(Privacy p) {
+		if (p == null) {
+			return null;
+		}
+		List<TraceStep> trace = p.trace() == null ? List.of() : p.trace().stream()
+			.limit(MAX_TRACE_STEPS)
+			.map(s -> new TraceStep(s.role(), Text.clean(s.path(), 1024), s.line()))
+			.toList();
+		return new Privacy(p.category(), p.type(), p.sink(), trace);
 	}
 }

@@ -202,6 +202,8 @@ def merge(parts: list[tuple[str, dict]]) -> dict:
             # Paths stay relative to the repository root, not to the scanned folder.
             if item.get("location"):
                 item["location"]["path"] = f"{folder}/{item['location']['path']}"
+            for step in (item.get("privacy") or {}).get("trace") or []:
+                step["path"] = f"{folder}/{step['path']}"
             findings.append(item)
     return {
         "status": status,

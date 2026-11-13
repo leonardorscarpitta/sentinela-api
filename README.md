@@ -1,11 +1,11 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg">
-    <img src=".github/assets/logo-light.svg" alt="Artemis" width="232" height="64">
+    <img src=".github/assets/logo-light.svg" alt="Sentinela Cidadã" width="290" height="64">
   </picture>
 </p>
 
-<p align="center">Continuous application security testing — API</p>
+<p align="center">Proteção de dados pessoais em apps cidadãos (CitizenTech) — API</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Java-25-0b4f8a" alt="Java 25">
@@ -16,9 +16,49 @@
 
 ---
 
-Backend of Artemis, a SAST platform. The frontend lives in the [artemis-appsec-frontend](https://github.com/leonardorscarpitta/artemis-appsec-frontend) repository.
+Backend of **Sentinela Cidadã**, a CitizenTech security platform that finds where citizens' personal data lives in an app's code (CPF, health data, passwords…), traces it to insecure outputs (logs, HTTP responses, third-party APIs, files, error messages), blocks those leaks in the pipeline and translates the risk for citizens. It is built on **Artemis**, an open-source SAST platform (fork), and keeps all of its scanning features. The frontend lives in the `sentinela-web` repository. The PII module is described in [PII module](#pii-module-sentinela-cidadã) and its API contract in [docs/pii-module.md](docs/pii-module.md).
 
-**Naming:** users see the product as **Artemis**; technical identifiers use **artemisappsec** — Java package `io.github.artemiscore.artemisappsec`, Maven artifact, `spring.application.name`, configuration prefix `artemisappsec.*`, database name/user, OIDC client `artemisappsec-web`, audience `artemisappsec-api` and the local auth host `auth.artemisappsec.localhost`.
+**Naming:** users see the product as **Sentinela Cidadã**; technical identifiers keep Artemis's **artemisappsec** names so nothing breaks — Java package `io.github.artemiscore.artemisappsec`, Maven artifact, `spring.application.name`, configuration prefix `artemisappsec.*`, database name/user, OIDC client `artemisappsec-web`, audience `artemisappsec-api`, the `X-Artemis-Organization` header and the local auth host `auth.artemisappsec.localhost`. Sections below that describe inherited behaviour still say "Artemis".
+
+## PII module (Sentinela Cidadã)
+
+Built for the GS 2026.2 CitizenTech brief: (01) personal-data mapping, (02) taint analysis that blocks leaks, (03) AI translation into citizen-risk alerts and (04) the executive "Risco Cidadão" dashboard. API contract: [docs/pii-module.md](docs/pii-module.md); evidence of the taint analysis on a prototype: [docs/evidencias/](docs/evidencias/README.md).
+
+**Pipeline stage `pii`** (`Stage.PII`, phase source, tool Semgrep, enabled by default, `failOn: high`, right after `sast`). Migration `V47` adds it to every existing repository and its gate to every organization. The runner (`scanner/worker/tools/pii.py`) runs Semgrep CE with the rules in `scanner/rules/pii/` only (the SAST stage loads only the top-level rule files) and reports findings of kind **`privacy`** with `privacy: {category, type, sink, trace}`.
+
+**Rules** (`scanner/rules/pii/`, Semgrep CE, never the registry):
+
+| File | What it finds |
+| --- | --- |
+| `mapping-java.yml` | Fields and record components named after personal data — identification (cpf, rg, cns, cnh, nis…), health (cid10, sintomas, diagnostico, laudo, prontuario…), credential (senha, password), contact (telefone, email, endereco), financial (cartao, chavePix, renda…) — only when the declared type is a value type (String, numbers, dates, lists of strings), so services, repositories and config objects never match. Identifier matching respects camelCase/snake_case word boundaries (`cid` matches `cid10`, `codigoCid`, not `cidade`; `rg` matches `numeroRg`, not `cargo`) and excludes configuration-like names (`passwordEncoder`, `emailTemplate`, `MIN_PASSWORD_LENGTH`). |
+| `mapping-literals.yml` | Values committed to the repository: CPF (`ddd.ddd.ddd-dd`), CNS (Cartão SUS), payment cards, CID-10 next to a `cid` label, personal e-mails (reserved/example domains and manifests excluded), Brazilian mobile numbers, and passwords/secrets in configuration files (`*.properties`, `*.yml`, `.env`…; `${…}` placeholders excluded). |
+| `flow-java.yml` | Taint (`mode: taint`), one rule per category × sink (`pii-flow-<category>-<sink>`): sources = PII getters/record accessors and `@RequestParam`/`@PathVariable`/`@RequestHeader` parameters; sinks = SLF4J/Log4j-style loggers and `System.out/err` (log), `ResponseEntity`/servlet writers (httpResponse), `RestTemplate`, `WebClient`, `java.net.http` (externalApi), `Files.write*`/`FileWriter` (file), `throw new …(…)` (exception). Plus `pii-flow-credential-entity-response`: an account entity (`Cidadao`, `Usuario`, `Paciente`, `User`…) returned whole in a `ResponseEntity`. |
+| `flow-python.yml`, `flow-javascript.yml` | The same idea for Flask/Django/FastAPI and Express/Node/Angular/React (sources: attributes, request keys, `req.body/query/params`; sinks: logging/print/console, `requests`/`httpx`/`fetch`/`axios`/`HttpClient`, `jsonify`/`JsonResponse`/`res.json`). |
+
+**Sanitizers** (a masked value is not a leak): `PiiMasker.*`, and calls named `mask*`, `mascarar*`, `hash*` (not `hashCode`), `anonymize*`/`anonimizar*`, `pseudonymize*`, `redact*`, `encrypt*`/`criptografar*`. For the entity rule, reading one field (a getter) or mapping to a DTO (`new …Dto(…)`, `toDto(…)`) is the fix and is not reported.
+
+**Check-digit validators** (fewer false positives): literal rules declare `metadata.sentinela.validator`. The runner reads the matched characters from the in-memory workspace, validates them and drops invalid matches — `cpf` (módulo 11, both digits; repeated digits rejected), `cns` (15 digits starting with 1, 2, 7, 8 or 9; weighted sum 15…1 divisible by 11), `luhn` (13–19 digits; public test card numbers dropped). The value never leaves the validator: it is not logged, stored or sent.
+
+**Taint traces.** Semgrep CE's CLI no longer puts `dataflow_trace` in its JSON output, so for each file with a flow finding the runner re-runs the engine (`semgrep-core`, the same rules with YAML anchors expanded into JSON at image build, max 200 files per stage) on that file alone and copies the **locations** of the source, the intermediate variables and the sink into `privacy.trace` (`[{role: source|propagation|sink, path, line}]`). The engine's code excerpts are discarded; when a trace cannot be recovered the finding keeps a single `sink` step.
+
+**Blocking.** Flow findings are `high` or `critical` (critical for health/credential/financial data reaching responses or third parties, and passwords in logs), so the default gate `failOn: high` fails the stage and the pipeline stops — leaks into insecure outputs are blocked before merge/deploy. Mapping findings are `low`/`medium` (inventory), except credentials in configuration files (`high`).
+
+**Findings.** `privacy` findings are deduplicated by `sha256(lower("privacy|ruleId|path|line"))` (line of the match, or of the sink for flows), stored with `privacy_category`, `privacy_type`, `privacy_sink` and `privacy_trace` (JSONB), returned on `GET /findings` items and the detail as `privacy` (null for other kinds) and filterable with `GET /findings?kind=privacy`. The API validates trace paths like locations (relative, no `..`) and keeps at most 20 steps.
+
+**Risco Cidadão** — `GET /api/v1/dashboard/citizen-risk[?repository=<name>]` (`viewFindings`; module `privacy`). Over the open/triaged privacy findings of connected repositories:
+
+- weight of a flow = severity × category × sink; of mapped data = severity × category × 0.3 (latent: stored, not leaking yet);
+- severity critical 10, high 6, medium 3, low 1; category health 1.5, credential 1.4, financial 1.3, identification 1.2, contact 0.8; sink externalApi 1.6, httpResponse 1.4, log 1.2, exception 1.1, file 1.0;
+- `score = round(100 × (1 − e^(−Σ/60)))` (saturating: a couple of critical health leaks already score high; never above 100); `level` critical ≥ 75, high ≥ 50, moderate ≥ 25, low; `verdict` `blocked` while any flow is open, else `approved`;
+- `byCategory` (weight, flows, mapped per category), `openFlows`, `mappedData`, `citizenAlerts`, `repositories` and `trend`: one point per completed run that scanned the `pii` stage — the repository's score stored in `citizen_risk_snapshot` (V47) after the run's completion commits (`RunCompleted` event, own transaction, once per run), last 12 oldest first. The weights are returned with the answer so the dashboard can explain the score.
+
+**Citizen alerts (AI translation)** — `GET|POST /api/v1/findings/{id}/citizen-alert` (GET `viewFindings`, POST `triage`; privacy findings only, else `400 not-privacy-finding`). Claude (`ClaudeClient`, JSON-schema structured output, effort low, `max_tokens` 700, no retries) turns the finding into `{title, whatHappens, whoIsAffected, citizenGuidance, technicalFix}` written for citizens (plus one fix line for developers), in the organization's language. Same gates as finding explanations: `aiTriage` feature (`403 feature-not-enabled`), `ANTHROPIC_API_KEY` (`503 ai-unavailable`), 4 concurrent AI calls (`503 ai-busy`), `AI_INSIGHTS_PER_DAY` attempts per organization and UTC day with a separate counter (`429 ai-limit`), invalid answer → `502 ai-failed` (nothing cached). Cached per organization and language by `privacy|ruleId|category|sink` (table `citizen_alert`, V47): one alert explains every occurrence of the same kind of leak.
+
+**Data sent to the AI for citizen alerts** (built only in `privacy/service/CitizenAlertPayload`): `lang`, `ruleId`, `category`, `type`, `sink`, `severity`, `cwe`, the rule's own title and the repository stack (e.g. `Java + Spring`). **Never sent:** source code, file paths or lines, matched values (CPF, CNS, passwords, phones…), people's names or e-mails, repository or organization names, logs. The system instruction and its rationale are in [prompts.md](prompts.md).
+
+**Test prototype.** `scanner/test-fixtures/citizentech-app/` ("Bairro Vivo", fictitious Spring Boot app: cadastro, zeladoria, triagem de saúde) contains five deliberate leaks (CPF → log, CID-10/sintomas → `http://analytics.parceiro.example`, entity with `senha` → `ResponseEntity`, telefone → exception message, CNS → file in `/tmp`), one CPF logged **masked** with `PiiMasker.cpf(…)` that must not be reported, a fake database password, a valid fake CPF and CNS and an invalid CPF that the validator must drop. Scan it with `scan --dir … --stages pii` (see "Local mode"); the result is in [docs/evidencias/pii-scan-bairro-vivo.json](docs/evidencias/pii-scan-bairro-vivo.json): 20 findings, 5 traced flows, the masked log absent and 1 literal dropped.
+
+**Dev seed.** With the `dev` profile the demo organization `acme` gets the repository `bairro-vivo` with the privacy findings of that prototype (plus three flows fixed in later runs), four completed runs blocked by the `pii` stage and a falling Risco Cidadão trend (85 → 80 → 76 → 71), two privacy findings in `payments-api`, and the `aiTriage` feature (`V1009`, `V1010`).
 
 ## Architecture
 
@@ -84,7 +124,7 @@ docker compose up -d
 | Remote debugger (JDWP) | `localhost:5005` (host only; the scanner reaches the API through `api-gateway`, never the debug port) |
 | PostgreSQL | `localhost:5432` |
 
-Every port is published on **127.0.0.1 only** (the dev stack has weak defaults and JDWP has no authentication); nothing is reachable from the network.
+Every port is published on **127.0.0.1 only** (the dev stack has weak defaults and JDWP has no authentication); nothing is reachable from the network. Ports can be moved with `API_PORT`, `DB_PORT`, `DEBUG_PORT`, `AUTH_PORT` and `MAILPIT_UI_PORT` in `.env` (e.g. `API_PORT=18080` when 8080 is taken).
 
 The `api` container runs `mvn spring-boot:run` with the `dev` profile. Maven compiles once at startup, so after changing code run `docker compose restart api` (DevTools also restarts the app when an IDE recompiles classes into `target/`). Dependencies are cached in `.m2/` (git-ignored).
 
@@ -190,7 +230,7 @@ All environment-specific values come from environment variables (secrets in prod
 | `DEPLOY_KEY_ENCRYPTION_KEY`, `DEPLOY_KEY_ENCRYPTION_KEY_ID` | Master key (base64 of 32 random bytes, `openssl rand -base64 32`) and its label (`v1`) for encrypting the private deploy keys of private repositories. Without a valid key, private repositories are disabled (`503 deploy-keys-disabled`) |
 | `KEYCLOAK_ADMIN_API_CLIENT_SECRET` | Secret (≥ 32 characters, `openssl rand -hex 32`) of the confidential client `artemisappsec-admin-api` used for user management; also fed to the realm import. Without it the `/admin/users` endpoints answer `503 user-management-disabled`. Also `KEYCLOAK_ADMIN_API_URL` (internal Keycloak URL, `http://keycloak:8080` in Docker), `KEYCLOAK_ADMIN_API_REALM` (`artemisappsec`), `KEYCLOAK_ADMIN_API_CLIENT_ID` (`artemisappsec-admin-api`) |
 | `SCANS_PER_MONTH` | Pipeline runs allowed per organization and calendar month, UTC (default **40**). Exposed without sign-in at `GET /api/v1/limits` (`{scansPerMonth}`) so the home page, the guide and the Terms of Use show the configured value |
-| `ANTHROPIC_API_KEY` | Claude API key (console.anthropic.com) for AI-written report texts and finding explanations; empty = disabled (reports use the standard texts, `POST /findings/{id}/insight` answers 503). Also `ANTHROPIC_MODEL` (`claude-haiku-5-5`), `AI_TIMEOUT_SECONDS` (60), `AI_REPORTS_PER_DAY` (10) and `AI_INSIGHTS_PER_DAY` (50) — AI **attempts** per organization per UTC day, failed ones included — and `AI_SBOM_MAX_PACKAGES` (200, 0–5000: dependencies listed for the SBOM supply chain review, ~12 input tokens each) |
+| `ANTHROPIC_API_KEY` | Claude API key (console.anthropic.com) for AI-written report texts and finding explanations; empty = disabled (reports use the standard texts, `POST /findings/{id}/insight` answers 503). Also `ANTHROPIC_MODEL` (`claude-haiku-5-5`), `AI_TIMEOUT_SECONDS` (60), `AI_REPORTS_PER_DAY` (10) and `AI_INSIGHTS_PER_DAY` (50) — AI **attempts** per organization per UTC day, failed ones included; `AI_INSIGHTS_PER_DAY` also limits citizen alerts, counted separately — and `AI_SBOM_MAX_PACKAGES` (200, 0–5000: dependencies listed for the SBOM supply chain review, ~12 input tokens each) |
 
 ## Architecture
 
@@ -221,6 +261,7 @@ Rules:
 | `dashboard` | Read-only aggregation of findings and repositories | `/api/v1/dashboard/summary`, `/api/v1/dashboard/trends` |
 | `report` | Security reports with optional topics (executive summary, recommendations, SBOM), generated in the background (see [Reports](#reports)); text localized by `Accept-Language` (en-US, pt-BR) | `/api/v1/reports` |
 | `insight` | AI explanations of findings, on request and cached per organization (see [AI finding explanations](#ai-finding-explanations)) | `/api/v1/findings/{id}/insight` |
+| `privacy` | Sentinela Cidadã: Risco Cidadão score and per-run snapshots (listens to `RunCompleted`), AI citizen alerts for privacy findings (see [PII module](#pii-module-sentinela-cidadã)) | `/api/v1/dashboard/citizen-risk`, `/api/v1/findings/{id}/citizen-alert` |
 | `policy` | Organization-wide stage gates (fail threshold, required), remediation SLAs, license allow/deny lists, risk acceptances | `/api/v1/policies`, `/api/v1/risk-acceptances` |
 | `account` | The signed-in user from the JWT | `/api/v1/me` |
 | `usage` | Artemis is free (no plans or payments). Monthly scan quota: **25 scans per organization** and UTC month (`organization_scan_usage` counter, V31: one row per org and month, incremented in the same transaction that queues a scan with a single conditional `INSERT … ON CONFLICT DO UPDATE … WHERE scans < limit`, so parallel requests cannot overshoot and deleting a repository does not give scans back). The run stores the reserved month (`pipeline_run.quota_month`, V34); runs that end before the runner reports any stage (access check or clone failed, runner rejected the job, cancelled, swept as stale) give the scan back (`quota_refunded`, shown on the run), while runs that ran stages count even when they fail. Settling and refunding are single conditional updates on the run row, so a scan is refunded at most once. Scans, re-runs and first scans are refused (`409`) once the month's limit is reached. `GET /usage` → `{scansThisMonth, scanLimit, periodStart, resetsAt, features}` | `/api/v1/usage` |
@@ -243,7 +284,8 @@ Security tools run **self-hosted** in the `scanner` service (image `artemisappse
 | Stage | Tool | License |
 | --- | --- | --- |
 | Secrets | Gitleaks 8.30.1 | MIT |
-| SAST | Semgrep CE 1.181.0 (engine) with Artemis's own 31 rules in `scanner/rules/` (JavaScript/TypeScript, Java + Spring, Python incl. Flask, Django and FastAPI) — never the Semgrep Registry | LGPL-2.1 |
+| SAST | Semgrep CE 1.181.0 (engine) with Artemis's own 31 rules in `scanner/rules/*.yml` (JavaScript/TypeScript, Java + Spring, Python incl. Flask, Django and FastAPI) — never the Semgrep Registry | LGPL-2.1 |
+| PII (personal data) | Semgrep CE 1.181.0 with the Sentinela Cidadã rules in `scanner/rules/pii/` (mapping + taint flows; see [PII module](#pii-module-sentinela-cidadã)) | LGPL-2.1 |
 | Dependencies (SCA), licenses, IaC, Dockerfile | Trivy 0.76.0 | Apache-2.0 |
 | Dependencies (SCA, alternative) | Grype 0.120.1 | Apache-2.0 |
 | Dockerfile | Hadolint 2.15.1 | GPL-3.0 |
@@ -275,7 +317,15 @@ docker run --rm --read-only --cap-drop ALL --tmpfs /tmp --tmpfs /workspace:uid=1
   artemisappsec/runner:dev scan --dir /fixture                # or: scan --url https://github.com/org/repo.git --branch main
 ```
 
-Options: `--stages secrets,sast,...` and `--tool sca=Grype` / `--tool dockerfile=Trivy`. Output is the normalized JSON sent to the API.
+Options: `--stages secrets,sast,pii,...` and `--tool sca=Grype` / `--tool dockerfile=Trivy`. Output is the normalized JSON sent to the API.
+
+PII stage on the CitizenTech prototype (no setup needed):
+
+```sh
+docker run --rm --read-only --cap-drop ALL --tmpfs /tmp --tmpfs /workspace:uid=10001,gid=10001 \
+  -v "$PWD/scanner/test-fixtures/citizentech-app:/fixture:ro" \
+  artemisappsec/runner:dev scan --dir /fixture --stages pii
+```
 
 ## Scanning (API side)
 
@@ -389,15 +439,18 @@ Stages run in pipeline order and **a failed stage stops the pipeline**: as soon 
 Finding payload:
 
 ```json
-{ "kind": "vulnerability | secret | code | config | license", "ruleId": "…", "title": "…", "description": "…",
+{ "kind": "vulnerability | secret | code | config | license | privacy", "ruleId": "…", "title": "…", "description": "…",
   "severity": "critical | high | medium | low", "cve": "CVE-…", "cvssScore": 9.8, "cvssVector": "CVSS:3.1/…", "cwe": "CWE-79",
   "package": { "name": "…", "version": "…", "fixedVersion": "…", "ecosystem": "npm | maven | pypi | …" },
-  "location": { "path": "relative/path", "line": 42 } }
+  "location": { "path": "relative/path", "line": 42 },
+  "privacy": { "category": "health", "type": "flow", "sink": "externalApi", "trace": [{ "role": "source", "path": "…", "line": 19 }] } }
 ```
+
+`privacy` is required for (and only read on) `privacy` findings; see [docs/pii-module.md](docs/pii-module.md).
 
 - `package` is required for `vulnerability` and `license`, `location` for the other kinds. Paths must be relative to the repository (no leading `/`, no `..`).
 - Up to 5 000 findings and 64 KiB of log per stage; text is truncated to column sizes and NUL characters are removed. Secrets must never be sent — only rule, file and line.
-- Deduplication per repository (`fingerprint`): vulnerabilities by `(cve or ruleId, package, version)`, licenses by `(ruleId, package, version)`, everything else by `(kind, ruleId, path)`. A known finding is refreshed (and reopened if it was fixed); active findings of a completed stage that are not reported again become `fixed`, with a timeline note. Stages that error or are skipped never fix anything.
+- Deduplication per repository (`fingerprint`): vulnerabilities by `(cve or ruleId, package, version)`, licenses by `(ruleId, package, version)`, privacy findings by `(kind, ruleId, path, line)`, everything else by `(kind, ruleId, path)`. A known finding is refreshed (and reopened if it was fixed); active findings of a completed stage that are not reported again become `fixed`, with a timeline note. Stages that error or are skipped never fix anything.
 - Severity of vulnerabilities comes from the CVSS score when present, otherwise from the tool.
 
 ### Reports
@@ -439,7 +492,7 @@ Policies are stored per organization (`policy` module) and applied through two p
 
 `GET /api/v1/findings` items (also `finding` in the detail and `recent` in the dashboard summary):
 
-`id, reference, kind, ruleId, cve, repository, packageName, packageGroup, installedVersion, fixedVersion, ecosystem, title, cvss, severity, status, stage, tool, location: {path, line} | null, detectedAt, statusChangedAt`
+`id, reference, kind, ruleId, cve, repository, packageName, packageGroup, installedVersion, fixedVersion, ecosystem, title, cvss, severity, status, stage, tool, location: {path, line} | null, detectedAt, statusChangedAt, privacy: {category, type, sink, trace} | null`
 
 `cve`, `cvss`, the package fields and `ecosystem` are `null` for secrets, code and config findings; `location` is `null` for package-based ones. Sorting by CVSS puts findings without a score last; `q` also matches rule ids and file paths. The dashboard's `averageCvss` covers only findings with a score.
 
@@ -461,5 +514,7 @@ Policies are stored per organization (`policy` module) and applied through two p
 Artemis is fully open source under the [MIT License](LICENSE): anyone may use, copy, modify, distribute and sell it, with no restrictions beyond keeping the license notice. Contributions are welcome and are licensed under the same terms (see [CONTRIBUTING.md](CONTRIBUTING.md)). The security tools run by the scanner (Gitleaks, Semgrep CE, Trivy, Grype, Syft, Hadolint) are separate programs under their own licenses; see the in-app Third-party notices page (`/licenses`) and the backend's `scanner/THIRD_PARTY_NOTICES.md`.
 
 ## About
+
+Sentinela Cidadã is an academic project (FIAP, GS 2026.2 CitizenTech) built as a fork of Artemis; it is likewise a fictional product, with fictitious demo data only, and is distributed under the same MIT License.
 
 Artemis is a **fictional product** created for an academic presentation and developed by [leonardorscarpitta](https://github.com/leonardorscarpitta). The developer claims no ownership of the code or of the name: there is no Artemis company, "Artemis" is not a registered trademark, and the project is not affiliated with NASA's Artemis program or any other product named Artemis. The in-app texts (Privacy Policy, Terms of Use, footer) are written as if Artemis were a real service, for the demonstration. Anyone running their own instance is responsible for it and for the data it stores.

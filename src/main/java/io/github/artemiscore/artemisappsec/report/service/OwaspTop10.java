@@ -58,7 +58,7 @@ final class OwaspTop10 {
 			case VULNERABILITY -> "A06";
 			case SECRET -> "A07";
 			case LICENSE -> OTHER;
-			case CODE, CONFIG -> {
+			case CODE, CONFIG, PRIVACY -> {
 				String mapped = cwe == null ? null : byCwe(cwe);
 				yield mapped != null ? mapped : kind == FindingKind.CONFIG ? "A05" : OTHER;
 			}

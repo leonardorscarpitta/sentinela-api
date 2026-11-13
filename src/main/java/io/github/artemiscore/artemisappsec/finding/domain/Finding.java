@@ -8,6 +8,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import io.github.artemiscore.artemisappsec.shared.domain.Severity;
 import io.github.artemiscore.artemisappsec.shared.domain.Stage;
 import io.github.artemiscore.artemisappsec.shared.error.BusinessRuleException;
@@ -90,6 +93,22 @@ public class Finding {
 	private Integer locationLine;
 
 	@Enumerated(EnumType.STRING)
+	@Column(name = "privacy_category")
+	private PrivacyCategory privacyCategory;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "privacy_type")
+	private PrivacyType privacyType;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "privacy_sink")
+	private PrivacySink privacySink;
+
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "privacy_trace")
+	private List<TraceStep> privacyTrace;
+
+	@Enumerated(EnumType.STRING)
 	@Column(nullable = false)
 	private Stage stage;
 
@@ -168,12 +187,23 @@ public class Finding {
 		this.ecosystem = d.packageName() == null ? null : Ecosystem.fromReported(d.ecosystem());
 		this.locationPath = d.locationPath();
 		this.locationLine = d.locationLine();
+		boolean privacy = d.kind() == FindingKind.PRIVACY;
+		this.privacyCategory = privacy ? d.privacyCategory() : null;
+		this.privacyType = privacy ? d.privacyType() : null;
+		this.privacySink = privacy && d.privacyType() == PrivacyType.FLOW ? d.privacySink() : null;
+		this.privacyTrace = privacy && d.privacyType() == PrivacyType.FLOW && d.privacyTrace() != null
+				? List.copyOf(d.privacyTrace()) : null;
 	}
 
-	/** What a scanner reported for one issue (already validated). */
+	/**
+	 * What a scanner reported for one issue (already validated). The privacy fields are only kept for
+	 * {@link FindingKind#PRIVACY}; sink and trace only for flows.
+	 */
 	public record Detection(FindingKind kind, String ruleId, String title, String description, Severity severity,
 			String cve, Double cvssScore, String cvssVector, String cwe, String packageName, String packageVersion,
-			String fixedVersion, String ecosystem, String locationPath, Integer locationLine) {
+			String fixedVersion, String ecosystem, String locationPath, Integer locationLine,
+			PrivacyCategory privacyCategory, PrivacyType privacyType, PrivacySink privacySink,
+			List<TraceStep> privacyTrace) {
 	}
 
 	public void changeStatus(FindingStatus target, String note, Instant now) {
@@ -223,6 +253,22 @@ public class Finding {
 
 	public Integer getLocationLine() {
 		return locationLine;
+	}
+
+	public PrivacyCategory getPrivacyCategory() {
+		return privacyCategory;
+	}
+
+	public PrivacyType getPrivacyType() {
+		return privacyType;
+	}
+
+	public PrivacySink getPrivacySink() {
+		return privacySink;
+	}
+
+	public List<TraceStep> getPrivacyTrace() {
+		return privacyTrace == null ? List.of() : privacyTrace;
 	}
 
 	public String getCve() {

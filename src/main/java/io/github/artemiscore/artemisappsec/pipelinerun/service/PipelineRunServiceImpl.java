@@ -15,10 +15,12 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -39,6 +41,7 @@ import io.github.artemiscore.artemisappsec.project.service.ProjectDetails;
 import io.github.artemiscore.artemisappsec.project.service.ProjectService;
 import io.github.artemiscore.artemisappsec.project.domain.AccessStatus;
 import io.github.artemiscore.artemisappsec.project.service.ProjectSummary;
+import io.github.artemiscore.artemisappsec.shared.domain.Stage;
 import io.github.artemiscore.artemisappsec.shared.error.BusinessRuleException;
 import io.github.artemiscore.artemisappsec.shared.error.ResourceNotFoundException;
 import io.github.artemiscore.artemisappsec.usage.service.UsageService;
@@ -60,11 +63,13 @@ class PipelineRunServiceImpl implements PipelineRunService {
 	private final OrganizationFeatures features;
 	private final RunQuota quota;
 	private final RunSboms sboms;
+	private final ApplicationEventPublisher events;
 	private final Clock clock;
 
 	PipelineRunServiceImpl(PipelineRunRepository runs, ProjectService projects, UsageService usage, OrganizationFeatures features,
-			RunQuota quota, RunSboms sboms) {
+			RunQuota quota, RunSboms sboms, ApplicationEventPublisher events) {
 		this.runs = runs;
+		this.events = events;
 		this.quota = quota;
 		this.sboms = sboms;
 		this.projects = projects;
@@ -270,6 +275,12 @@ class PipelineRunServiceImpl implements PipelineRunService {
 		run.complete(now);
 		quota.settle(runId);
 		projects.recordScan(run.getProjectId(), now);
+		Set<Stage> scanned = run.getStages().stream()
+			.filter(s -> s.getStatus() == StageStatus.PASSED || s.getStatus() == StageStatus.WARNING
+					|| (s.getStatus() == StageStatus.FAILED && s.getFailedBy() != null))
+			.map(StageRun::getStage)
+			.collect(Collectors.toUnmodifiableSet());
+		events.publishEvent(new RunCompleted(run.getId(), run.getNumber(), run.getProjectId(), now, scanned));
 	}
 
 	@Override

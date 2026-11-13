@@ -1,0 +1,309 @@
+# Sentinela Cidadã — taint rules (Python: Flask, Django, FastAPI). Same ids as the Java rules with a "-py" suffix;
+# sinks covered: log/print, outbound HTTP clients and HTTP responses.
+rules:
+  # ---------------------------------------------------------------- identification
+  - id: pii-flow-identification-log-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: Um documento de identificação do cidadão (CPF, RG, CNS…) é gravado em log sem máscara. Mascare ou não registre.
+    metadata:
+      title: Documento do cidadão gravado em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      artemis-severity: high
+      sentinela: { category: identification, type: flow, sink: log }
+    pattern-sources: &py-src-identification
+      - patterns:
+          - pattern: $OBJ.$NAME
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: (^|_)(cpf|rg|cns|cnh|nis|pis|passaporte|cartao_sus|titulo_eleitor|data_nascimento|nome_mae)($|_)
+      - patterns:
+          - pattern-either:
+              - pattern: $DATA[$KEY]
+              - pattern: $DATA.get($KEY, ...)
+          - metavariable-regex:
+              metavariable: $KEY
+              regex: ^["'](\w*_)?(cpf|rg|cns|cnh|nis|pis|passaporte|cartao_sus|titulo_eleitor|data_nascimento|nome_mae)(_\w*)?["']$
+    pattern-sanitizers: &py-sanitizers
+      - patterns:
+          - pattern-either:
+              - pattern: $SAN(...)
+              - pattern: $RECV.$SAN(...)
+          - metavariable-regex:
+              metavariable: $SAN
+              regex: ^(mask|mascarar|hash(?!Code$)|anonymi[sz]e|anonimizar|pseudonymi[sz]e|redact|encrypt|criptografar)\w*$
+    pattern-sinks: &py-sink-log
+      - patterns:
+          - pattern-either:
+              - pattern: logging.$LEVEL(...)
+              - pattern: $LOGGER.$LEVEL(...)
+          - metavariable-regex: { metavariable: $LEVEL, regex: '^(debug|info|warning|warn|error|exception|critical|log)$' }
+      - pattern: print(...)
+
+  - id: pii-flow-identification-external-api-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: Um documento de identificação do cidadão é enviado a um serviço externo. Envie só o necessário, anonimizado.
+    metadata:
+      title: Documento do cidadão enviado a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      artemis-severity: high
+      sentinela: { category: identification, type: flow, sink: externalApi }
+    pattern-sources: *py-src-identification
+    pattern-sanitizers: *py-sanitizers
+    pattern-sinks: &py-sink-external-api
+      - pattern: requests.$METHOD(...)
+      - pattern: httpx.$METHOD(...)
+      - pattern: urllib.request.urlopen(...)
+      - pattern: urllib.request.Request(...)
+
+  - id: pii-flow-identification-http-response-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: Um documento de identificação do cidadão é devolvido na resposta HTTP sem máscara.
+    metadata:
+      title: Documento do cidadão exposto na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      artemis-severity: high
+      sentinela: { category: identification, type: flow, sink: httpResponse }
+    pattern-sources: *py-src-identification
+    pattern-sanitizers: *py-sanitizers
+    pattern-sinks: &py-sink-http-response
+      - pattern: jsonify(...)
+      - pattern: flask.jsonify(...)
+      - pattern: make_response(...)
+      - pattern: JsonResponse(...)
+      - pattern: HttpResponse(...)
+      - pattern: JSONResponse(...)
+
+  # ---------------------------------------------------------------- health
+  - id: pii-flow-health-log-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: Dados de saúde do cidadão (CID-10, sintomas, diagnóstico…) são gravados em log. Dado sensível (LGPD art. 11).
+    metadata:
+      title: Dado de saúde gravado em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      artemis-severity: high
+      sentinela: { category: health, type: flow, sink: log }
+    pattern-sources: &py-src-health
+      - patterns:
+          - pattern: $OBJ.$NAME
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: (^|_)(cid|cid10|diagnostico|diagnosticos|diagnosis|sintoma|sintomas|symptom|symptoms|laudo|laudos|prontuario|alergia|alergias|comorbidade|comorbidades|medicamento|medicamentos|doenca|doencas|exame|exames|deficiencia|gestacao|hiv)($|_)
+      - patterns:
+          - pattern-either:
+              - pattern: $DATA[$KEY]
+              - pattern: $DATA.get($KEY, ...)
+          - metavariable-regex:
+              metavariable: $KEY
+              regex: ^["'](\w*_)?(cid|cid10|diagnostico|diagnosticos|diagnosis|sintoma|sintomas|symptom|symptoms|laudo|laudos|prontuario|alergia|alergias|comorbidade|comorbidades|medicamento|medicamentos|doenca|doencas|exame|exames|deficiencia|gestacao|hiv)(_\w*)?["']$
+    pattern-sanitizers: *py-sanitizers
+    pattern-sinks: *py-sink-log
+
+  - id: pii-flow-health-external-api-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: Dados de saúde do cidadão são enviados a um serviço externo. Envie apenas dados agregados e anonimizados.
+    metadata:
+      title: Dado de saúde enviado a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      artemis-severity: critical
+      sentinela: { category: health, type: flow, sink: externalApi }
+    pattern-sources: *py-src-health
+    pattern-sanitizers: *py-sanitizers
+    pattern-sinks: *py-sink-external-api
+
+  - id: pii-flow-health-http-response-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: Dados de saúde do cidadão são devolvidos na resposta HTTP. Devolva só o necessário, a usuários autorizados.
+    metadata:
+      title: Dado de saúde exposto na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      artemis-severity: critical
+      sentinela: { category: health, type: flow, sink: httpResponse }
+    pattern-sources: *py-src-health
+    pattern-sanitizers: *py-sanitizers
+    pattern-sinks: *py-sink-http-response
+
+  # ---------------------------------------------------------------- credential
+  - id: pii-flow-credential-log-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: A senha do cidadão é gravada em log. Nunca registre senhas.
+    metadata:
+      title: Senha do cidadão gravada em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      artemis-severity: critical
+      sentinela: { category: credential, type: flow, sink: log }
+    pattern-sources: &py-src-credential
+      - patterns:
+          - pattern: $OBJ.$NAME
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: (^|_)(senha|password|passwd|pwd)($|_)
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: ^(?!.*(encoder|policy|reset|hint|length|expir|strength|validator|pattern|regex|field|label|hasher))
+      - patterns:
+          - pattern-either:
+              - pattern: $DATA[$KEY]
+              - pattern: $DATA.get($KEY, ...)
+          - metavariable-regex:
+              metavariable: $KEY
+              regex: ^["'](\w*_)?(senha|password|passwd|pwd)(_\w*)?["']$
+    pattern-sanitizers: *py-sanitizers
+    pattern-sinks: *py-sink-log
+
+  - id: pii-flow-credential-external-api-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: A senha do cidadão é enviada a um serviço externo. Use tokens próprios da integração.
+    metadata:
+      title: Senha enviada a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      artemis-severity: critical
+      sentinela: { category: credential, type: flow, sink: externalApi }
+    pattern-sources: *py-src-credential
+    pattern-sanitizers: *py-sanitizers
+    pattern-sinks: *py-sink-external-api
+
+  - id: pii-flow-credential-http-response-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: A senha (ou o hash dela) é devolvida na resposta HTTP. Remova o campo da resposta.
+    metadata:
+      title: Senha exposta na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      artemis-severity: critical
+      sentinela: { category: credential, type: flow, sink: httpResponse }
+    pattern-sources: *py-src-credential
+    pattern-sanitizers: *py-sanitizers
+    pattern-sinks: *py-sink-http-response
+
+  # ---------------------------------------------------------------- contact
+  - id: pii-flow-contact-log-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: Um contato do cidadão (telefone, e-mail, endereço) é gravado em log sem máscara.
+    metadata:
+      title: Contato do cidadão gravado em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      artemis-severity: high
+      sentinela: { category: contact, type: flow, sink: log }
+    pattern-sources: &py-src-contact
+      - patterns:
+          - pattern: $OBJ.$NAME
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: (^|_)(telefone|celular|phone|email|e_mail|endereco|cep|whatsapp|logradouro)($|_)
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: ^(?!.*(template|subject|body|sender|remetente|host|server|port|pattern|regex|enabled|verified|service|config|backend|url))
+      - patterns:
+          - pattern-either:
+              - pattern: $DATA[$KEY]
+              - pattern: $DATA.get($KEY, ...)
+          - metavariable-regex:
+              metavariable: $KEY
+              regex: ^["'](\w*_)?(telefone|celular|phone|email|endereco|cep|whatsapp|logradouro)(_\w*)?["']$
+    pattern-sanitizers: *py-sanitizers
+    pattern-sinks: *py-sink-log
+
+  - id: pii-flow-contact-external-api-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: Um contato do cidadão é enviado a um serviço externo. Confirme a base legal e envie só o necessário.
+    metadata:
+      title: Contato do cidadão enviado a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      artemis-severity: high
+      sentinela: { category: contact, type: flow, sink: externalApi }
+    pattern-sources: *py-src-contact
+    pattern-sanitizers: *py-sanitizers
+    pattern-sinks: *py-sink-external-api
+
+  - id: pii-flow-contact-http-response-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: Um contato do cidadão é devolvido na resposta HTTP. Devolva apenas ao dono do dado, ou mascarado.
+    metadata:
+      title: Contato do cidadão exposto na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      artemis-severity: high
+      sentinela: { category: contact, type: flow, sink: httpResponse }
+    pattern-sources: *py-src-contact
+    pattern-sanitizers: *py-sanitizers
+    pattern-sinks: *py-sink-http-response
+
+  # ---------------------------------------------------------------- financial
+  - id: pii-flow-financial-log-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: Dados financeiros do cidadão (cartão, conta, PIX, renda) são gravados em log.
+    metadata:
+      title: Dado financeiro gravado em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      artemis-severity: high
+      sentinela: { category: financial, type: flow, sink: log }
+    pattern-sources: &py-src-financial
+      - patterns:
+          - pattern: $OBJ.$NAME
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: (^|_)(cartao|numero_cartao|card_number|credit_card|cvv|cvc|iban|conta_bancaria|chave_pix|renda|salario)($|_)
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: ^(?!.*_sus)
+      - patterns:
+          - pattern-either:
+              - pattern: $DATA[$KEY]
+              - pattern: $DATA.get($KEY, ...)
+          - metavariable-regex:
+              metavariable: $KEY
+              regex: ^["'](\w*_)?(cartao|card_number|credit_card|cvv|cvc|iban|conta_bancaria|chave_pix|renda|salario)(_\w*)?["']$
+    pattern-sanitizers: *py-sanitizers
+    pattern-sinks: *py-sink-log
+
+  - id: pii-flow-financial-external-api-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: Dados financeiros do cidadão são enviados a um serviço externo. Use o tokenizador do provedor de pagamento.
+    metadata:
+      title: Dado financeiro enviado a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      artemis-severity: critical
+      sentinela: { category: financial, type: flow, sink: externalApi }
+    pattern-sources: *py-src-financial
+    pattern-sanitizers: *py-sanitizers
+    pattern-sinks: *py-sink-external-api
+
+  - id: pii-flow-financial-http-response-py
+    languages: [python]
+    severity: ERROR
+    mode: taint
+    message: Dados financeiros do cidadão são devolvidos na resposta HTTP. Mostre no máximo os 4 últimos dígitos.
+    metadata:
+      title: Dado financeiro exposto na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      artemis-severity: critical
+      sentinela: { category: financial, type: flow, sink: httpResponse }
+    pattern-sources: *py-src-financial
+    pattern-sanitizers: *py-sanitizers
+    pattern-sinks: *py-sink-http-response

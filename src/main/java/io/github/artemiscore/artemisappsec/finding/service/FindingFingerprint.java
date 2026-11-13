@@ -12,7 +12,8 @@ import io.github.artemiscore.artemisappsec.finding.domain.FindingKind;
 
 /**
  * Identity of an issue within a project. Must match the SQL backfill in V10 for vulnerabilities:
- * {@code sha256(lower("vulnerability|cve|package|version"))}.
+ * {@code sha256(lower("vulnerability|cve|package|version"))}. Privacy findings include the line of the match (or of
+ * the sink, for flows), since one file usually holds several fields or leaks of the same rule.
  */
 final class FindingFingerprint {
 
@@ -24,6 +25,8 @@ final class FindingFingerprint {
 			case VULNERABILITY -> join(FindingKind.VULNERABILITY, d.cve() != null ? d.cve() : d.ruleId(), d.packageName(),
 					d.packageVersion());
 			case LICENSE -> join(FindingKind.LICENSE, d.ruleId(), d.packageName(), d.packageVersion());
+			case PRIVACY -> join(FindingKind.PRIVACY, d.ruleId(), d.locationPath(),
+					d.locationLine() == null ? null : d.locationLine().toString());
 			default -> join(d.kind(), d.ruleId(), d.locationPath());
 		};
 		return sha256(key.toLowerCase(Locale.ROOT));

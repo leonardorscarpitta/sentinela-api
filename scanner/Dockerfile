@@ -69,9 +69,18 @@ COPY --from=tools /opt/tools/bin/ /usr/local/bin/
 COPY --from=tools /opt/tools/licenses/ /usr/share/licenses/
 COPY --from=semgrep /opt/semgrep /opt/semgrep
 COPY --from=semgrep /opt/tools/licenses/semgrep/ /usr/share/licenses/semgrep/
-RUN ln -s /opt/semgrep/bin/semgrep /usr/local/bin/semgrep
+RUN ln -s /opt/semgrep/bin/semgrep /usr/local/bin/semgrep \
+    && ln -s /opt/semgrep/lib/python3*/site-packages/semgrep/bin/semgrep-core /usr/local/bin/semgrep-core
 
 COPY rules/ /opt/artemis/rules/
+# The PII stage re-runs semgrep-core on files with taint findings to recover their traces; the engine does not
+# resolve YAML anchors (the CLI does), so it gets an expanded JSON copy of the flow rules.
+RUN mkdir -p /opt/artemis/rules-core \
+    && /opt/semgrep/bin/python -c "import json, pathlib; from ruamel.yaml import YAML; \
+yaml = YAML(typ='safe'); \
+[pathlib.Path('/opt/artemis/rules-core', p.stem + '.json').write_text(json.dumps(yaml.load(p.read_text()))) \
+ for p in pathlib.Path('/opt/artemis/rules/pii').glob('flow-*.yml')]" \
+    && ls /opt/artemis/rules-core/flow-java.json /opt/artemis/rules-core/flow-python.json /opt/artemis/rules-core/flow-javascript.json
 # Official host keys of GitHub, GitLab and Bitbucket (private repositories over SSH); see the file header.
 COPY known_hosts /etc/artemis/known_hosts
 COPY worker/ /app/worker/

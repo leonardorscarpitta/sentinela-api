@@ -1,10 +1,11 @@
 """Tool adapters keyed by (stage id, tool name), matching the API's stage catalog."""
-from . import gitleaks, grype, hadolint, semgrep, syft, trivy
+from . import gitleaks, grype, hadolint, pii, semgrep, syft, trivy
 from .base import MAX_FINDINGS, ToolError, ToolResult
 
 ADAPTERS = {
     ("secrets", "Gitleaks"): gitleaks.scan,
     ("sast", "Semgrep"): semgrep.scan,
+    ("pii", "Semgrep"): pii.scan,
     ("sca", "Trivy"): trivy.vulnerabilities,
     ("sca", "Grype"): grype.vulnerabilities,
     ("license", "Trivy"): trivy.licenses,

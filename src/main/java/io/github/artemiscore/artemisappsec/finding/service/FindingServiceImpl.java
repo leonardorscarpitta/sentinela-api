@@ -25,6 +25,7 @@ import io.github.artemiscore.artemisappsec.finding.domain.Finding;
 import io.github.artemiscore.artemisappsec.finding.domain.FindingEvent;
 import io.github.artemiscore.artemisappsec.finding.domain.FindingKind;
 import io.github.artemiscore.artemisappsec.finding.domain.FindingStatus;
+import io.github.artemiscore.artemisappsec.finding.domain.PrivacyType;
 import io.github.artemiscore.artemisappsec.finding.persistence.FindingRepository;
 import io.github.artemiscore.artemisappsec.finding.persistence.FindingSpecifications;
 import io.github.artemiscore.artemisappsec.project.service.ProjectService;
@@ -263,7 +264,14 @@ class FindingServiceImpl implements FindingService {
 		return new FindingSummary(f.getId(), f.getReference(), f.getKind(), f.getRuleId(), f.getCve(),
 				project == null ? null : project.name(), project != null && project.removed(), f.getPackageName(), f.getPackageGroup(), f.getInstalledVersion(),
 				f.getFixedVersion(), f.getEcosystem(), f.getTitle(), cvss, f.getSeverity(), f.getStatus(), f.getStage(),
-				f.getTool(), location, f.getDetectedAt(), f.getStatusChangedAt(), dueAt, overdue, f.getCwe());
+				f.getTool(), location, f.getDetectedAt(), f.getStatusChangedAt(), dueAt, overdue, f.getCwe(), privacy(f));
+	}
+
+	private static Privacy privacy(Finding f) {
+		if (f.getKind() != FindingKind.PRIVACY || f.getPrivacyCategory() == null) {
+			return null;
+		}
+		return new Privacy(f.getPrivacyCategory(), f.getPrivacyType(), f.getPrivacySink(), f.getPrivacyTrace());
 	}
 
 	@Override
@@ -332,7 +340,7 @@ class FindingServiceImpl implements FindingService {
 		}
 		return new DetectedIssue(issue.kind(), issue.ruleId(), issue.title(), issue.description(), severity, issue.cve(),
 				issue.cvssScore(), issue.cvssVector(), issue.cwe(), issue.packageName(), issue.packageVersion(),
-				issue.fixedVersion(), issue.ecosystem(), issue.locationPath(), issue.locationLine());
+				issue.fixedVersion(), issue.ecosystem(), issue.locationPath(), issue.locationLine(), issue.privacy());
 	}
 
 	private static Finding.Detection toDetection(DetectedIssue i) {
@@ -347,10 +355,26 @@ class FindingServiceImpl implements FindingService {
 			throw new IllegalArgumentException("Finding '%s' of kind %s needs a location path"
 				.formatted(i.ruleId(), i.kind().wireValue()));
 		}
+		Privacy p = i.kind() == FindingKind.PRIVACY ? requirePrivacy(i) : null;
 		return new Finding.Detection(i.kind(), i.ruleId().trim(), i.title().trim(), i.description(), i.severity(),
 				blankToNull(i.cve()), i.cvssScore(), blankToNull(i.cvssVector()), blankToNull(i.cwe()),
 				blankToNull(i.packageName()), blankToNull(i.packageVersion()), blankToNull(i.fixedVersion()),
-				blankToNull(i.ecosystem()), blankToNull(i.locationPath()), i.locationLine());
+				blankToNull(i.ecosystem()), blankToNull(i.locationPath()), i.locationLine(),
+				p == null ? null : p.category(), p == null ? null : p.type(), p == null ? null : p.sink(),
+				p == null ? null : p.trace());
+	}
+
+	/** Privacy findings carry their category and type; flows also their sink (and usually a trace). */
+	private static Privacy requirePrivacy(DetectedIssue i) {
+		Privacy p = i.privacy();
+		if (p == null || p.category() == null || p.type() == null) {
+			throw new IllegalArgumentException("Finding '%s' of kind privacy needs privacy.category and privacy.type"
+				.formatted(i.ruleId()));
+		}
+		if (p.type() == PrivacyType.FLOW && p.sink() == null) {
+			throw new IllegalArgumentException("Privacy flow '%s' needs privacy.sink".formatted(i.ruleId()));
+		}
+		return p.type() == PrivacyType.FLOW ? p : new Privacy(p.category(), p.type(), null, List.of());
 	}
 
 	private static boolean isBlank(String value) {
