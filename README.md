@@ -10,9 +10,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Java-25-0b4f8a" alt="Java 25">
   <img src="https://img.shields.io/badge/Spring%20Boot-4.1-0b4f8a" alt="Spring Boot 4.1">
-  <img src="https://img.shields.io/badge/PostgreSQL-18-0b4f8a" alt="PostgreSQL 18">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-5a6474" alt="License: MIT"></a>
-</p>
+  <img src="https://img.shields.io/badge/PostgreSQL-18-0b4f8a" alt="PostgreSQL 18"></p>
 
 ---
 
@@ -495,16 +493,12 @@ Policies are stored per organization (`policy` module) and applied through two p
 - `GET /api/v1/dashboard/trends?days=30|90&tz=<IANA zone>` (default `30`, `UTC`; other values → `400`) returns `{periodDays, timeZone, days: [{date, critical, high, medium, low, detected, fixed, runsSucceeded, runsFailed, runsCancelled}], meanTimeToRemediateDays, fixedInPeriod}`, one entry per day (oldest first, today included), with days in `tz`.
 - History is replayed in SQL from each finding's timeline (`finding_event`): a finding is open on a day when its last event at the end of that day (in `tz`) is `OPEN` or `TRIAGED`. Approximations: findings are counted under their **current** severity; `detected` counts first detections only (reopens are not "new"); `fixed` counts every transition to fixed (automatic or manual); mean time to remediate = first detection → fix, over the fixes in the period (`null` when there were none). Runs are counted on the day they started; running/queued runs are left out. Deleted repositories take their history with them.
 
-## Contributing
+## Development conventions
 
-- **How to contribute:** see [CONTRIBUTING.md](CONTRIBUTING.md) (contributions are licensed under MIT).
 - **Branches:** `main` (stable) and `develop` (integration). Create `feat/*` or `bugfix/*` branches from `develop`.
 - **Commits:** [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).
 - Update this README when modules, endpoints or conventions change.
-
-## License
-
-Sentinela is fully open source under the [MIT License](LICENSE): anyone may use, copy, modify, distribute and sell it, with no restrictions beyond keeping the license notice. Contributions are welcome and are licensed under the same terms (see [CONTRIBUTING.md](CONTRIBUTING.md)). The security tools run by the scanner (Gitleaks, Semgrep CE, Trivy, Grype, Syft, Hadolint) are separate programs under their own licenses; see the in-app Third-party notices page (`/licenses`) and the backend's `scanner/THIRD_PARTY_NOTICES.md`.
+- The security tools run by the scanner (Gitleaks, Semgrep CE, Trivy, Grype, Syft, Hadolint) are separate programs under their own licenses; see `scanner/THIRD_PARTY_NOTICES.md`.
 
 ## About
 
