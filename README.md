@@ -498,7 +498,7 @@ Policies are stored per organization (`policy` module) and applied through two p
 ## Contributing
 
 - **How to contribute:** see [CONTRIBUTING.md](CONTRIBUTING.md) (contributions are licensed under MIT).
-- **Branches:** `main` (stable) and `dev` (integration). Create `feat/*` or `bugfix/*` branches from `dev`.
+- **Branches:** `main` (stable) and `develop` (integration). Create `feat/*` or `bugfix/*` branches from `develop`.
 - **Commits:** [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).
 - Update this README when modules, endpoints or conventions change.
 

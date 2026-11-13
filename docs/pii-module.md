@@ -27,10 +27,9 @@ The implementation follows the original contract; these points refine or deviate
 
 ---
 
-Product name everywhere users see it: **Sentinela Cidadã**. The backend is a fork of the Sentinela SAST platform
-(`sentinela-api`); technical identifiers (`br.com.sentinelacidada`, `sentinela.*`, Keycloak realm/client
-ids, `X-Sentinela-Organization`) stay unchanged. Everything below is **new** on top of the existing API documented in
-`README.md`.
+Product name everywhere users see it: **Sentinela Cidadã**; technical identifiers use `sentinela`
+(`br.com.sentinelacidada`, `sentinela.*`, Keycloak realm/client ids, `X-Sentinela-Organization`). Everything below is
+the PII module, on top of the rest of the API documented in `README.md`.
 
 Wire style follows the existing API: JSON camelCase, enum values lowercase/camelCase strings, errors as RFC 7807
 ProblemDetail with `code`.
