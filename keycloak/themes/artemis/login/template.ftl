@@ -140,13 +140,13 @@
           <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2" />
           <path d="M20 5a12 12 0 1 0 0 22a10 10 0 0 1 0-22z" fill="currentColor" />
         </svg>
-        <span class="art-logo-name">Artemis</span>
+        <span class="art-logo-name">Sentinela Cidadã</span>
       </span></a><#else><span class="art-logo">
         <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true">
           <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2" />
           <path d="M20 5a12 12 0 1 0 0 22a10 10 0 0 1 0-22z" fill="currentColor" />
         </svg>
-        <span class="art-logo-name">Artemis</span>
+        <span class="art-logo-name">Sentinela Cidadã</span>
       </span></#if>
     <div class="art-pitch">
       <p class="art-eyebrow">${msg("artemisProduct")}</p>
@@ -181,7 +181,7 @@
           <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2" />
           <path d="M20 5a12 12 0 1 0 0 22a10 10 0 0 1 0-22z" fill="currentColor" />
         </svg>
-        <span class="art-logo-name">Artemis</span>
+        <span class="art-logo-name">Sentinela Cidadã</span>
       </span></span>
       <#if realm.internationalizationEnabled  && locale.supported?size gt 1>
         <div class="${properties.kcLoginMainHeaderUtilities!}">
@@ -307,7 +307,7 @@
     </div>
 
     <footer class="art-foot">
-      <span>© 2026 Artemis</span>
+      <span>© 2026 Sentinela Cidadã</span>
       <#if appUrl?has_content>
       <span class="art-links">
         <a href="${appUrl}">${msg("artemisBackToApp")}</a>
