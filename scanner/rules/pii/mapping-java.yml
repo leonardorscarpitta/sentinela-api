@@ -1,0 +1,173 @@
+# Sentinela Cidadã — mapping rules (Java): where personal data lives in the code (inventory, LGPD art. 37).
+# Fields and record components whose names carry personal data, restricted to value types (String, numbers,
+# dates, lists of strings), so services, repositories and configuration objects are never reported.
+# Low/medium severity on purpose: mapping documents the data; leaks are reported by the flow rules.
+rules:
+  - id: pii-map-identification-field
+    languages: [java]
+    severity: INFO
+    message: >-
+      Campo com documento de identificação do cidadão (CPF, RG, CNS, CNH, NIS…). Registre-o no inventário de dados
+      pessoais e garanta máscara em logs e respostas.
+    metadata:
+      title: Documento do cidadão armazenado
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: low
+      sentinela: { category: identification, type: mapping }
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-inside: |
+                  class $CLASS { ... }
+              - pattern-not-inside: |
+                  $RET $METHOD(...) { ... }
+              - pattern-either:
+                  - pattern: $TYPE $FIELD;
+                  - pattern: $TYPE $FIELD = $INIT;
+          - patterns:
+              - pattern: |
+                  record $RECORD(..., $TYPE $FIELD, ...) { ... }
+              - focus-metavariable: $FIELD
+      - metavariable-regex:
+          metavariable: $TYPE
+          regex: ^(String|char\[\]|CharSequence|Long|long|Integer|int|BigInteger|BigDecimal|LocalDate|LocalDateTime|Date|List<String>|Set<String>|Collection<String>|String\[\])$
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: (^|_)(cpf|rg|cns|cnh|nis|pis|passaporte|cartaoSus|cartao_sus|tituloEleitor|titulo_eleitor|dataNascimento|data_nascimento|nomeMae|nome_mae|CPF|RG|CNS|CNH|NIS|PIS)($|_|[A-Z0-9])|[a-z0-9](Cpf|Rg|Cns|Cnh|Nis|Pis|Passaporte|CartaoSus|TituloEleitor|DataNascimento|NomeMae|CPF|RG|CNS|CNH|NIS|PIS)($|_|[A-Z0-9])
+
+  - id: pii-map-health-field
+    languages: [java]
+    severity: WARNING
+    message: >-
+      Campo com dado de saúde do cidadão (CID-10, sintomas, diagnóstico, laudo…). Dado sensível pela LGPD (art. 11):
+      acesso restrito, criptografia em repouso e nunca em logs.
+    metadata:
+      title: Dado de saúde armazenado
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: medium
+      sentinela: { category: health, type: mapping }
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-inside: |
+                  class $CLASS { ... }
+              - pattern-not-inside: |
+                  $RET $METHOD(...) { ... }
+              - pattern-either:
+                  - pattern: $TYPE $FIELD;
+                  - pattern: $TYPE $FIELD = $INIT;
+          - patterns:
+              - pattern: |
+                  record $RECORD(..., $TYPE $FIELD, ...) { ... }
+              - focus-metavariable: $FIELD
+      - metavariable-regex:
+          metavariable: $TYPE
+          regex: ^(String|char\[\]|CharSequence|Long|long|Integer|int|BigInteger|BigDecimal|LocalDate|LocalDateTime|Date|List<String>|Set<String>|Collection<String>|String\[\])$
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: (^|_)(cid|cid10|diagnostico|diagnosticos|diagnosis|sintoma|sintomas|symptom|symptoms|laudo|laudos|prontuario|alergia|alergias|comorbidade|comorbidades|medicamento|medicamentos|doenca|doencas|exame|exames|deficiencia|gestacao|hiv|CID|CID10|HIV)($|_|[A-Z0-9])|[a-z0-9](Cid|Diagnostico|Diagnosticos|Diagnosis|Sintoma|Sintomas|Symptom|Symptoms|Laudo|Laudos|Prontuario|Alergia|Alergias|Comorbidade|Comorbidades|Medicamento|Medicamentos|Doenca|Doencas|Exame|Exames|Deficiencia|Gestacao|Hiv|CID|HIV)($|_|[A-Z0-9])
+
+  - id: pii-map-credential-field
+    languages: [java]
+    severity: INFO
+    message: >-
+      Campo com senha do cidadão. Guarde somente o hash (bcrypt/argon2), nunca o texto, e exclua o campo de qualquer
+      resposta ou log.
+    metadata:
+      title: Senha armazenada
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: low
+      sentinela: { category: credential, type: mapping }
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-inside: |
+                  class $CLASS { ... }
+              - pattern-not-inside: |
+                  $RET $METHOD(...) { ... }
+              - pattern-either:
+                  - pattern: $TYPE $FIELD;
+                  - pattern: $TYPE $FIELD = $INIT;
+          - patterns:
+              - pattern: |
+                  record $RECORD(..., $TYPE $FIELD, ...) { ... }
+              - focus-metavariable: $FIELD
+      - metavariable-regex:
+          metavariable: $TYPE
+          regex: ^(String|char\[\]|CharSequence)$
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: (^|_)(senha|password|passwd|pwd|pin|SENHA|PASSWORD|PASSWD|PWD|PIN)($|_|[A-Z0-9])|[a-z0-9](Senha|Password|Passwd|Pwd|Pin|SENHA|PASSWORD|PIN)($|_|[A-Z0-9])
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: (?i)^(?!.*(encoder|policy|reset|hint|length|expir|strength|validator|pattern|regex|field|label|param|attempt|changed|updated|required|enabled|property|key$))
+
+  - id: pii-map-contact-field
+    languages: [java]
+    severity: INFO
+    message: >-
+      Campo com contato do cidadão (telefone, e-mail, endereço). Registre no inventário e mascare em logs e telas
+      públicas.
+    metadata:
+      title: Contato do cidadão armazenado
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: low
+      sentinela: { category: contact, type: mapping }
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-inside: |
+                  class $CLASS { ... }
+              - pattern-not-inside: |
+                  $RET $METHOD(...) { ... }
+              - pattern-either:
+                  - pattern: $TYPE $FIELD;
+                  - pattern: $TYPE $FIELD = $INIT;
+          - patterns:
+              - pattern: |
+                  record $RECORD(..., $TYPE $FIELD, ...) { ... }
+              - focus-metavariable: $FIELD
+      - metavariable-regex:
+          metavariable: $TYPE
+          regex: ^(String|CharSequence|Long|long|List<String>|Set<String>)$
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: (^|_)(telefone|celular|phone|email|e_mail|endereco|cep|whatsapp|logradouro|TELEFONE|PHONE|EMAIL|CEP)($|_|[A-Z0-9])|[a-z0-9](Telefone|Celular|Phone|Email|EMail|Endereco|Cep|Whatsapp|Logradouro|EMAIL|CEP)($|_|[A-Z0-9])
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: (?i)^(?!.*(template|subject|body|sender|remetente|host|server|port|pattern|regex|enabled|verified|service|config|validator|url|type|tipo|property|key$))
+
+  - id: pii-map-financial-field
+    languages: [java]
+    severity: INFO
+    message: >-
+      Campo com dado financeiro do cidadão (cartão, conta, PIX, renda). Prefira tokens do provedor de pagamento e
+      mascare sempre.
+    metadata:
+      title: Dado financeiro armazenado
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: low
+      sentinela: { category: financial, type: mapping }
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-inside: |
+                  class $CLASS { ... }
+              - pattern-not-inside: |
+                  $RET $METHOD(...) { ... }
+              - pattern-either:
+                  - pattern: $TYPE $FIELD;
+                  - pattern: $TYPE $FIELD = $INIT;
+          - patterns:
+              - pattern: |
+                  record $RECORD(..., $TYPE $FIELD, ...) { ... }
+              - focus-metavariable: $FIELD
+      - metavariable-regex:
+          metavariable: $TYPE
+          regex: ^(String|char\[\]|CharSequence|Long|long|BigInteger|BigDecimal|Double|double)$
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: (^|_)(cartao|cardNumber|card_number|creditCard|credit_card|cvv|cvc|iban|contaBancaria|conta_bancaria|chavePix|chave_pix|renda|salario|CVV|CVC|IBAN|PAN)($|_|[A-Z0-9])|[a-z0-9](Cartao|CardNumber|CreditCard|Cvv|Cvc|Iban|ContaBancaria|ChavePix|Renda|Salario|CVV|IBAN)($|_|[A-Z0-9])
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: ^(?!.*(Sus|SUS|_sus))

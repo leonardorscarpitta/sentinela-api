@@ -8,18 +8,12 @@
 		<version>4.1.1</version>
 		<relativePath/>
 	</parent>
-	<groupId>io.github.artemiscore</groupId>
-	<artifactId>artemisappsec</artifactId>
+	<groupId>io.github.sentinelacidada</groupId>
+	<artifactId>sentinela</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>artemisappsec</name>
-	<description>Artemis SAST platform API</description>
-	<url>https://github.com/leonardorscarpitta/artemis-appsec-backend</url>
-	<licenses>
-		<license>
-			<name>MIT</name>
-			<url>https://opensource.org/license/mit</url>
-		</license>
-	</licenses>
+	<name>sentinela</name>
+	<description>Sentinela SAST platform API</description>
+	<url>https://github.com/leonardorscarpitta/sentinela-api</url>
 	<developers>
 		<developer>
 			<id>leonardorscarpitta</id>
@@ -27,9 +21,9 @@
 		</developer>
 	</developers>
 	<scm>
-		<url>https://github.com/leonardorscarpitta/artemis-appsec-backend</url>
-		<connection>scm:git:https://github.com/leonardorscarpitta/artemis-appsec-backend.git</connection>
-		<developerConnection>scm:git:git@github.com:leonardorscarpitta/artemis-appsec-backend.git</developerConnection>
+		<url>https://github.com/leonardorscarpitta/sentinela-api</url>
+		<connection>scm:git:https://github.com/leonardorscarpitta/sentinela-api.git</connection>
+		<developerConnection>scm:git:git@github.com:leonardorscarpitta/sentinela-api.git</developerConnection>
 	</scm>
 
 	<properties>

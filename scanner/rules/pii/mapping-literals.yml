@@ -1,0 +1,100 @@
+# Sentinela Cidadã — mapping rules for literal values committed to the repository (code, SQL seeds, fixtures,
+# configuration). Rules with metadata.sentinela.validator are checked by the runner: it reads the matched text
+# locally and drops matches whose check digits are wrong (cpf: módulo 11; cns: soma ponderada módulo 11;
+# luhn: cartões, with well-known test numbers dropped too). The matched value is never sent anywhere.
+rules:
+  - id: pii-literal-cpf
+    languages: [regex]
+    severity: WARNING
+    message: >-
+      Número de CPF válido escrito no repositório (código, SQL ou fixture). Se for de uma pessoa real, é um vazamento
+      já consumado: remova do histórico e use dados sintéticos gerados em tempo de teste.
+    metadata:
+      title: CPF escrito no repositório
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: medium
+      sentinela: { category: identification, type: mapping, validator: cpf }
+    pattern-regex: (?<![\w.-])\d{3}\.\d{3}\.\d{3}-\d{2}(?![\w-])
+
+  - id: pii-literal-cns
+    languages: [regex]
+    severity: WARNING
+    message: >-
+      Número de Cartão Nacional de Saúde (CNS) válido escrito no repositório. É dado de saúde (LGPD art. 11): remova e
+      use dados sintéticos.
+    metadata:
+      title: Cartão SUS (CNS) escrito no repositório
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: medium
+      sentinela: { category: health, type: mapping, validator: cns }
+    pattern-either:
+      - pattern-regex: (?<![\w.-])[1-2789]\d{2} \d{4} \d{4} \d{4}(?![\w-])
+      # Unformatted only next to a CNS label, otherwise any 15-digit number would be a candidate.
+      - pattern-regex: (?i)\b(?:cns|cartao_?sus|cartaosus)\b[^\n\d]{0,24}[1-2789]\d{14}(?!\d)
+
+  - id: pii-literal-payment-card
+    languages: [regex]
+    severity: WARNING
+    message: >-
+      Número de cartão de pagamento válido (Luhn) escrito no repositório. Remova; para testes use os números oficiais
+      de teste do provedor.
+    metadata:
+      title: Número de cartão escrito no repositório
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: medium
+      sentinela: { category: financial, type: mapping, validator: luhn }
+    pattern-regex: (?<![\w.-])(?:4\d{3}|5[1-5]\d{2}|2[2-7]\d{2}|6011)(?:[ -]?\d{4}){3}(?![\w-])
+
+  - id: pii-literal-cid10
+    languages: [regex]
+    severity: WARNING
+    message: >-
+      Código CID-10 associado a um registro escrito no repositório. Diagnósticos são dados sensíveis; use dados
+      sintéticos em seeds e testes.
+    metadata:
+      title: Código CID-10 escrito no repositório
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: medium
+      sentinela: { category: health, type: mapping }
+    pattern-regex: (?i)\bcid(?:[-_ ]?10)?\b["']?\s*[:=]\s*["']?[A-TV-Z]\d{2}(?:\.\d{1,2})?\b
+
+  - id: pii-literal-email
+    languages: [regex]
+    severity: INFO
+    message: >-
+      Endereço de e-mail pessoal escrito no repositório (dados de teste ou seeds). Prefira domínios reservados
+      (example.com) em dados de teste.
+    metadata:
+      title: E-mail escrito no repositório
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: low
+      sentinela: { category: contact, type: mapping }
+    paths:
+      exclude: ["pom.xml", "package.json", "*.lock", "*-lock.json", "*.md", "LICENSE*", "NOTICE*", "AUTHORS*", "CODEOWNERS", "*.svg", "*.min.js"]
+    pattern-regex: (?<![\w.%+-])[A-Za-z0-9._%+-]{1,64}@(?!(?:[\w-]+\.)*(?:example\.(?:com|org|net)|localhost|users\.noreply\.github\.com)\b)(?![^\s"'<>]*\b(?:noreply|no-reply)\b)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}\b
+
+  - id: pii-literal-phone-br
+    languages: [regex]
+    severity: INFO
+    message: Número de celular brasileiro escrito no repositório. Use números fictícios reservados em dados de teste.
+    metadata:
+      title: Celular escrito no repositório
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: low
+      sentinela: { category: contact, type: mapping }
+    pattern-regex: (?<![\w+])(?:\+55\s?)?\(\d{2}\)\s?9\d{4}-\d{4}(?!\d)
+
+  - id: pii-config-credential
+    languages: [regex]
+    severity: ERROR
+    message: >-
+      Senha ou segredo escrito em arquivo de configuração. Quem tem acesso ao repositório (ou a um backup dele) chega
+      ao banco com os dados dos cidadãos. Leia o valor de variável de ambiente ou cofre de segredos e troque a senha.
+    metadata:
+      title: Senha em arquivo de configuração
+      cwe: "CWE-260: Password in Configuration File"
+      sentinela-severity: high
+      sentinela: { category: credential, type: mapping }
+    paths:
+      include: ["*.properties", "*.yml", "*.yaml", "*.env", ".env", ".env.*", "*.ini", "*.cfg", "*.conf", "*.toml"]
+    pattern-regex: (?im)^[ \t]*[\w.-]*(?:password|passwd|pwd|senha|secret)[\w.-]*[ \t]*[:=][ \t]*(?!\$\{|\{\{|<|%\(|["']?\s*$|["']?(?:null|none|true|false|changeme|change-me|\*+)["']?\s*$)["']?[^\s#"']{4,}

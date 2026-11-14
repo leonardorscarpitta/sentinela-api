@@ -15,14 +15,14 @@ springdoc:
 
 logging:
   level:
-    io.github.artemiscore.artemisappsec: DEBUG
+    br.com.sentinelacidada: DEBUG
     org.springframework.web: DEBUG
 
-artemisappsec:
+sentinela:
   security:
     auth-enabled: ${AUTH_ENABLED:true}
     oidc:
-      issuer-uri: ${OIDC_ISSUER_URI:https://auth.artemisappsec.localhost:9443}
+      issuer-uri: ${OIDC_ISSUER_URI:https://auth.sentinela.localhost:9443}
       jwk-set-uri: ${OIDC_JWK_SET_URI:http://auth-proxy:9080/jwks.json}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}

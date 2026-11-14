@@ -1,16 +1,20 @@
-"""SAST with the Semgrep CE engine and Artemis's own rules (never the Semgrep registry)."""
+"""SAST with the Semgrep CE engine and Sentinela's own rules (never the Semgrep registry)."""
 import os
 from pathlib import Path
 
-from .base import ToolResult, finding, location, read_json, relative, run, severity, summary
+from .base import ToolError, ToolResult, finding, location, read_json, relative, run, severity, summary
 
-RULES_DIR = os.environ.get("ARTEMIS_RULES_DIR", "/opt/artemis/rules")
+RULES_DIR = os.environ.get("SENTINELA_RULES_DIR", "/opt/sentinela/rules")
 
 
 def scan(src: Path, out: Path, timeout: int) -> ToolResult:
     report = out / "semgrep.json"
+    # Only the top-level rule files: rules/pii/ belongs to the pii stage.
+    configs = [arg for path in sorted(Path(RULES_DIR).glob("*.yml")) for arg in ("--config", str(path))]
+    if not configs:
+        raise ToolError("No SAST rules found in this runner")
     run(
-        ["semgrep", "scan", "--config", RULES_DIR, "--json", "--output", str(report), "--metrics=off",
+        ["semgrep", "scan", *configs, "--json", "--output", str(report), "--metrics=off",
          "--disable-version-check", "--quiet", "--timeout", "30", "--max-target-bytes", "1000000",
          "--jobs", "1", "--max-memory", "1200", str(src)],
         timeout, out, ok_codes=(0, 1),
@@ -30,7 +34,7 @@ def scan(src: Path, out: Path, timeout: int) -> ToolResult:
         findings.append(finding(
             "code", rule, metadata.get("title") or extra.get("message", rule).split(".")[0],
             extra.get("message", ""),
-            severity(metadata.get("artemis-severity") or extra.get("severity"), "medium"),
+            severity(metadata.get("sentinela-severity") or extra.get("severity"), "medium"),
             cwe=cwe,
             location=location(relative(result.get("path"), src), result.get("start", {}).get("line")),
         ))

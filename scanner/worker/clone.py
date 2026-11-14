@@ -15,7 +15,7 @@ BRANCH_PATTERN = re.compile(r"^(?!-)[A-Za-z0-9._/-]{1,255}$")
 HOST_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,252}[A-Za-z0-9])?$")
 SSH_PATH_PATTERN = re.compile(r"^(?![-/])[A-Za-z0-9._~/-]{1,400}$")
 SCP_LIKE = re.compile(r"^git@([^:/]+):(.+)$")
-PINNED_KNOWN_HOSTS = Path("/etc/artemis/known_hosts")
+PINNED_KNOWN_HOSTS = Path("/etc/sentinela/known_hosts")
 PINNED_HOSTS = {"github.com", "gitlab.com", "bitbucket.org"}
 
 
@@ -184,7 +184,7 @@ def explain_ssh_error(stderr: str) -> str:
     """Maps git/ssh errors to messages that are safe to show (never echoes server output)."""
     text = stderr.lower()
     if "host key verification failed" in text or "remote host identification has changed" in text:
-        return "Host key verification failed: the Git server's host key does not match the one Artemis trusts"
+        return "Host key verification failed: the Git server's host key does not match the one Sentinela trusts"
     if "permission denied" in text:
         return "Permission denied: add the deploy key to the repository (read-only) and try again"
     if "remote branch" in text and "not found" in text:

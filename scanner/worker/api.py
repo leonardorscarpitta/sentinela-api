@@ -23,7 +23,7 @@ class ApiClient:
             "Authorization": f"Bearer {config.token}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "artemisappsec-runner",
+            "User-Agent": "sentinela-runner",
         }
 
     def claim(self) -> dict | None:

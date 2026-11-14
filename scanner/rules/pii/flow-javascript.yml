@@ -1,0 +1,277 @@
+# Sentinela Cidadã — taint rules (JavaScript / TypeScript: Express, Node, Angular/React clients). Same ids as the
+# Java rules with a "-js" suffix; sinks covered: console/loggers, outbound HTTP (fetch, axios, HttpClient) and
+# Express responses.
+rules:
+  # ---------------------------------------------------------------- identification
+  - id: pii-flow-identification-log-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: Um documento de identificação do cidadão (CPF, RG, CNS…) é gravado em log sem máscara. Mascare ou não registre.
+    metadata:
+      title: Documento do cidadão gravado em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      sentinela-severity: high
+      sentinela: { category: identification, type: flow, sink: log }
+    pattern-sources: &js-src-identification
+      - patterns:
+          - pattern: $OBJ.$NAME
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: (^|_)(cpf|rg|cns|cnh|nis|pis|passaporte|cartaoSus|cartao_sus|tituloEleitor|dataNascimento|nomeMae)($|_|[A-Z0-9])|[a-z0-9](Cpf|Rg|Cns|Cnh|Nis|Pis|Passaporte|CartaoSus|TituloEleitor|DataNascimento|NomeMae|CPF)($|_|[A-Z0-9])
+    pattern-sanitizers: &js-sanitizers
+      - patterns:
+          - pattern-either:
+              - pattern: $SAN(...)
+              - pattern: $RECV.$SAN(...)
+          - metavariable-regex:
+              metavariable: $SAN
+              regex: ^(mask|mascarar|hash(?!Code$)|anonymi[sz]e|anonimizar|pseudonymi[sz]e|redact|encrypt|criptografar)\w*$
+    pattern-sinks: &js-sink-log
+      - pattern: console.$LEVEL(...)
+      - patterns:
+          - pattern: $LOGGER.$LEVEL(...)
+          - metavariable-regex: { metavariable: $LOGGER, regex: '^(log|logger|_logger|this\.logger|this\.log)$' }
+          - metavariable-regex: { metavariable: $LEVEL, regex: '^(trace|debug|info|warn|error|fatal|log)$' }
+
+  - id: pii-flow-identification-external-api-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: Um documento de identificação do cidadão é enviado a um serviço externo. Envie só o necessário, anonimizado.
+    metadata:
+      title: Documento do cidadão enviado a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      sentinela-severity: high
+      sentinela: { category: identification, type: flow, sink: externalApi }
+    pattern-sources: *js-src-identification
+    pattern-sanitizers: *js-sanitizers
+    pattern-sinks: &js-sink-external-api
+      - pattern: fetch(...)
+      - pattern: axios(...)
+      - pattern: axios.$METHOD(...)
+      - patterns:
+          - pattern: $HTTP.$METHOD(...)
+          - metavariable-regex: { metavariable: $HTTP, regex: '^(this\.)?(http|httpClient|api|apiClient)$' }
+          - metavariable-regex: { metavariable: $METHOD, regex: '^(post|put|patch|request)$' }
+
+  - id: pii-flow-identification-http-response-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: Um documento de identificação do cidadão é devolvido na resposta HTTP sem máscara.
+    metadata:
+      title: Documento do cidadão exposto na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: high
+      sentinela: { category: identification, type: flow, sink: httpResponse }
+    pattern-sources: *js-src-identification
+    pattern-sanitizers: *js-sanitizers
+    pattern-sinks: &js-sink-http-response
+      - patterns:
+          - pattern-either:
+              - pattern: $RES.$SEND(...)
+              - pattern: $RES.status(...).$SEND(...)
+          - metavariable-regex: { metavariable: $RES, regex: '^(res|response|reply)$' }
+          - metavariable-regex: { metavariable: $SEND, regex: '^(json|send|jsonp|end)$' }
+
+  # ---------------------------------------------------------------- health
+  - id: pii-flow-health-log-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: Dados de saúde do cidadão (CID-10, sintomas, diagnóstico…) são gravados em log. Dado sensível (LGPD art. 11).
+    metadata:
+      title: Dado de saúde gravado em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      sentinela-severity: high
+      sentinela: { category: health, type: flow, sink: log }
+    pattern-sources: &js-src-health
+      - patterns:
+          - pattern: $OBJ.$NAME
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: (^|_)(cid|cid10|diagnostico|diagnosticos|diagnosis|sintoma|sintomas|symptom|symptoms|laudo|laudos|prontuario|alergia|alergias|comorbidade|comorbidades|medicamento|medicamentos|doenca|doencas|exame|exames|deficiencia|gestacao|hiv)($|_|[A-Z0-9])|[a-z0-9](Cid|Diagnostico|Diagnosticos|Diagnosis|Sintoma|Sintomas|Symptom|Symptoms|Laudo|Laudos|Prontuario|Alergia|Alergias|Comorbidade|Comorbidades|Medicamento|Medicamentos|Doenca|Doencas|Exame|Exames|Deficiencia|Gestacao|Hiv|CID|HIV)($|_|[A-Z0-9])
+    pattern-sanitizers: *js-sanitizers
+    pattern-sinks: *js-sink-log
+
+  - id: pii-flow-health-external-api-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: Dados de saúde do cidadão são enviados a um serviço externo. Envie apenas dados agregados e anonimizados.
+    metadata:
+      title: Dado de saúde enviado a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      sentinela-severity: critical
+      sentinela: { category: health, type: flow, sink: externalApi }
+    pattern-sources: *js-src-health
+    pattern-sanitizers: *js-sanitizers
+    pattern-sinks: *js-sink-external-api
+
+  - id: pii-flow-health-http-response-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: Dados de saúde do cidadão são devolvidos na resposta HTTP. Devolva só o necessário, a usuários autorizados.
+    metadata:
+      title: Dado de saúde exposto na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: critical
+      sentinela: { category: health, type: flow, sink: httpResponse }
+    pattern-sources: *js-src-health
+    pattern-sanitizers: *js-sanitizers
+    pattern-sinks: *js-sink-http-response
+
+  # ---------------------------------------------------------------- credential
+  - id: pii-flow-credential-log-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: A senha do cidadão é gravada em log. Nunca registre senhas.
+    metadata:
+      title: Senha do cidadão gravada em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      sentinela-severity: critical
+      sentinela: { category: credential, type: flow, sink: log }
+    pattern-sources: &js-src-credential
+      - patterns:
+          - pattern: $OBJ.$NAME
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: (^|_)(senha|password|passwd|pwd)($|_|[A-Z0-9])|[a-z0-9](Senha|Password|Passwd|Pwd)($|_|[A-Z0-9])
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: (?i)^(?!.*(encoder|policy|reset|hint|length|expir|strength|validator|pattern|regex|field|label|visible|show|hidden|input|control|type))
+    pattern-sanitizers: *js-sanitizers
+    pattern-sinks: *js-sink-log
+
+  - id: pii-flow-credential-external-api-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: A senha do cidadão é enviada a um serviço externo. Use tokens próprios da integração.
+    metadata:
+      title: Senha enviada a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      sentinela-severity: critical
+      sentinela: { category: credential, type: flow, sink: externalApi }
+    pattern-sources: *js-src-credential
+    pattern-sanitizers: *js-sanitizers
+    pattern-sinks: *js-sink-external-api
+
+  - id: pii-flow-credential-http-response-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: A senha (ou o hash dela) é devolvida na resposta HTTP. Remova o campo da resposta.
+    metadata:
+      title: Senha exposta na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: critical
+      sentinela: { category: credential, type: flow, sink: httpResponse }
+    pattern-sources: *js-src-credential
+    pattern-sanitizers: *js-sanitizers
+    pattern-sinks: *js-sink-http-response
+
+  # ---------------------------------------------------------------- contact
+  - id: pii-flow-contact-log-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: Um contato do cidadão (telefone, e-mail, endereço) é gravado em log sem máscara.
+    metadata:
+      title: Contato do cidadão gravado em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      sentinela-severity: high
+      sentinela: { category: contact, type: flow, sink: log }
+    pattern-sources: &js-src-contact
+      - patterns:
+          - pattern: $OBJ.$NAME
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: (^|_)(telefone|celular|phone|email|endereco|cep|whatsapp|logradouro)($|_|[A-Z0-9])|[a-z0-9](Telefone|Celular|Phone|Email|EMail|Endereco|Cep|Whatsapp|Logradouro)($|_|[A-Z0-9])
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: (?i)^(?!.*(template|subject|body|sender|remetente|host|server|port|pattern|regex|enabled|verified|service|config|validator|url|type|control|input|field|label))
+    pattern-sanitizers: *js-sanitizers
+    pattern-sinks: *js-sink-log
+
+  - id: pii-flow-contact-external-api-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: Um contato do cidadão é enviado a um serviço externo. Confirme a base legal e envie só o necessário.
+    metadata:
+      title: Contato do cidadão enviado a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      sentinela-severity: high
+      sentinela: { category: contact, type: flow, sink: externalApi }
+    pattern-sources: *js-src-contact
+    pattern-sanitizers: *js-sanitizers
+    pattern-sinks: *js-sink-external-api
+
+  - id: pii-flow-contact-http-response-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: Um contato do cidadão é devolvido na resposta HTTP. Devolva apenas ao dono do dado, ou mascarado.
+    metadata:
+      title: Contato do cidadão exposto na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: high
+      sentinela: { category: contact, type: flow, sink: httpResponse }
+    pattern-sources: *js-src-contact
+    pattern-sanitizers: *js-sanitizers
+    pattern-sinks: *js-sink-http-response
+
+  # ---------------------------------------------------------------- financial
+  - id: pii-flow-financial-log-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: Dados financeiros do cidadão (cartão, conta, PIX, renda) são gravados em log.
+    metadata:
+      title: Dado financeiro gravado em log
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      sentinela-severity: high
+      sentinela: { category: financial, type: flow, sink: log }
+    pattern-sources: &js-src-financial
+      - patterns:
+          - pattern: $OBJ.$NAME
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: (^|_)(cartao|cardNumber|card_number|creditCard|cvv|cvc|iban|contaBancaria|chavePix|renda|salario)($|_|[A-Z0-9])|[a-z0-9](Cartao|CardNumber|CreditCard|Cvv|Cvc|Iban|ContaBancaria|ChavePix|Renda|Salario|CVV)($|_|[A-Z0-9])
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: ^(?!.*(Sus|SUS|_sus))
+    pattern-sanitizers: *js-sanitizers
+    pattern-sinks: *js-sink-log
+
+  - id: pii-flow-financial-external-api-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: Dados financeiros do cidadão são enviados a um serviço externo. Use o tokenizador do provedor de pagamento.
+    metadata:
+      title: Dado financeiro enviado a serviço externo
+      cwe: "CWE-201: Insertion of Sensitive Information Into Sent Data"
+      sentinela-severity: critical
+      sentinela: { category: financial, type: flow, sink: externalApi }
+    pattern-sources: *js-src-financial
+    pattern-sanitizers: *js-sanitizers
+    pattern-sinks: *js-sink-external-api
+
+  - id: pii-flow-financial-http-response-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    mode: taint
+    message: Dados financeiros do cidadão são devolvidos na resposta HTTP. Mostre no máximo os 4 últimos dígitos.
+    metadata:
+      title: Dado financeiro exposto na resposta HTTP
+      cwe: "CWE-359: Exposure of Private Personal Information to an Unauthorized Actor"
+      sentinela-severity: critical
+      sentinela: { category: financial, type: flow, sink: httpResponse }
+    pattern-sources: *js-src-financial
+    pattern-sanitizers: *js-sanitizers
+    pattern-sinks: *js-sink-http-response

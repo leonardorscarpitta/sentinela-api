@@ -1,0 +1,32 @@
+package br.com.sentinelacidada.project.persistence;
+
+import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+
+import br.com.sentinelacidada.project.domain.AccessCheck;
+import br.com.sentinelacidada.project.domain.AccessCheckStatus;
+
+public interface AccessCheckRepository extends JpaRepository<AccessCheck, UUID> {
+
+	/** Locks the oldest queued check so concurrent runners never claim the same one. */
+	@Query(value = "SELECT * FROM repository_access_check WHERE status = 'QUEUED' ORDER BY requested_at LIMIT 1 FOR UPDATE SKIP LOCKED",
+			nativeQuery = true)
+	Optional<AccessCheck> lockNextQueued();
+
+	Optional<AccessCheck> findFirstByProjectIdOrderByRequestedAtDesc(UUID projectId);
+
+	Optional<AccessCheck> findFirstByProjectIdAndStatusIn(UUID projectId, Collection<AccessCheckStatus> statuses);
+
+	List<AccessCheck> findByStatusAndStartedAtBefore(AccessCheckStatus status, Instant startedBefore);
+
+	@Query(value = """
+			SELECT count(*) FROM repository_access_check c JOIN project p ON p.id = c.project_id
+			WHERE p.organization_id = :organizationId AND c.requested_at > :since""", nativeQuery = true)
+	long countForOrganizationSince(UUID organizationId, Instant since);
+}
